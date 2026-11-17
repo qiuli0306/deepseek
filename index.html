@@ -667,7 +667,7 @@ var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
   fastModel:'deepseek-flash', expertModel:'deepseek-v4-pro', temp:'1.0',
   theme:'light', lang:'zh-CN', fontScale:'1', webSearch:false, think:false,
-  chatStyle:'command', showAvatar:true, wideBubble:false, glass:false, waifu:false, autoTitle:true,
+  chatStyle:'command', showAvatar:false, wideBubble:false, glass:false, waifu:false, autoTitle:true,
   userColor:'', aiColor:'', chatBg:'', bgImage:'', userAvatar:'', aiAvatar:'', model:'deepseek-flash', provider:'deepseek', userName:'我', aiName:'',
   tts:{ prov:'openai', base:'https://api.openai.com/v1', key:'', group:'', model:'tts-1', voice:'alloy' },
   voiceStyle:0, autoplay:false, welcomed:false
@@ -688,8 +688,9 @@ if(!convs.length){
   try{ if(!convs.length){ var o2=JSON.parse(localStorage.getItem('dsclone_convs_v2')||'[]'); if(o2&&o2.length) convs=o2; } }catch(e){}
 }
 var curId=null, busy=false, ac=null, pending=[], recentImgs=[];
+if(!S.avatarMigrated){ S.showAvatar=false; S.avatarMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
 if(!S.themeMigrated){ S.theme='light'; S.themeMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
-if(!S.uiMigrated){ S.chatStyle='command'; S.waifu=false; S.showAvatar=true; S.uiMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
+if(!S.uiMigrated){ S.chatStyle='command'; S.waifu=false; S.showAvatar=false; S.uiMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
 
 try{ recentImgs=JSON.parse(localStorage.getItem('dsclone_recent')||'[]')||[]; }catch(e){ recentImgs=[]; }
 
@@ -2026,7 +2027,7 @@ function subThemeSub(){
   '</div>'+
   '<div class="group" style="margin-top:14px">'+
     '<div class="row"><span class="k">'+t('showAvatar')+'<div style="font-size:12px;color:var(--fg3);line-height:1.5;margin-top:2px">'+t('showAvatarD')+'</div></span><div class="sw '+(S.showAvatar?'on':'')+'" data-toggle="showAvatar"><i></i></div></div>'+
-    '<div class="row"><span class="k">'+t('wideBubble')+'</span><div class="sw '+(S.wideBubble?'on':'')+'" data-toggle="wideBubble"><i></i></div></div>'+
+
     '<div class="row"><span class="k">'+t('glass')+'</span><div class="sw '+(S.glass?'on':'')+'" data-toggle="glass"><i></i></div></div>'+
   '</div>'+
   '<div class="sec">'+t('avatarSec')+'</div>'+
