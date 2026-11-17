@@ -1428,7 +1428,7 @@ async function autoTitle(c){
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
       body:JSON.stringify({
-        model:S.fastModel,
+        model:(S.model||S.fastModel),
         messages:[
           {role:'system',content:'用不超过10个字概括这句话的主题，只输出标题本身，不要引号、标点或解释。'},
           {role:'user',content:String(first.content).slice(0,300)}
@@ -1462,8 +1462,13 @@ async function send(text, retryIndex){
     });
     pending=[]; renderAttach();
   }
-  if(!c.title) c.title = (uiLang()==='zh'?'新对话':'New chat');
-  // 立刻并行生成标题，不等回复结束
+  if(!c.title || c.title===(uiLang()==='zh'?'新对话':'New chat')){
+    var _fu=null;
+    for(var _i=0;_i<c.msgs.length;_i++){ if(c.msgs[_i].role==='user'){ _fu=c.msgs[_i]; break; } }
+    if(_fu && _fu.content) c.title = shortTitle(_fu.content);
+    saveC(); renderConvs(); updateHeadTitle();
+  }
+  // 立刻并行生成正式标题，不等回复结束
   if(S.autoTitle!==false && (c.titleGen||0)<2){
     setTimeout(function(){ autoTitle(c); }, 120);
   }
