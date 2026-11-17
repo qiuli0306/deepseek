@@ -1,0 +1,22 @@
+name: supabase-keepalive
+
+on:
+  schedule:
+    - cron: '0 3 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: sb_publishable_SONx6WOGiwwbDb9wDdP8sA_kgOBQd9i" \
+            -H "Authorization: Bearer sb_publishable_SONx6WOGiwwbDb9wDdP8sA_kgOBQd9i" \
+            "https://qlrsmneaidftzrhjtshz.supabase.co/rest/v1/conversations?select=id&limit=1")
+          echo "HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "keepalive failed"
+            exit 1
+          fi
