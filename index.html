@@ -686,6 +686,7 @@ if(!convs.length){
 }
 var curId=null, busy=false, ac=null, pending=[], recentImgs=[];
 if(!S.themeMigrated){ S.theme='light'; S.themeMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
+if(!S.uiMigrated){ S.chatStyle='command'; S.waifu=false; S.showAvatar=true; S.uiMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
 
 try{ recentImgs=JSON.parse(localStorage.getItem('dsclone_recent')||'[]')||[]; }catch(e){ recentImgs=[]; }
 
