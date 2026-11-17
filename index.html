@@ -1421,26 +1421,48 @@ async function autoTitle(c){
   var first=null;
   for(var i=0;i<c.msgs.length;i++) if(c.msgs[i].role==='user'){ first=c.msgs[i]; break; }
   if(!first || !first.content) return;
-  // 先给一个临时标题，避免一直显示「新对话」
-  if(!c.titleGen){ c.title=shortTitle(first.content); c.titleGen=1; saveC(); renderConvs(); updateHeadTitle(); }
+  var model = S.model || S.fastModel;
+  var body = {
+    model: model,
+    messages: [
+      {role:'system',content:'用不超过10个字概括这句话的主题，只输出标题本身，不要引号、标点或解释。'},
+      {role:'user',content:String(first.content).slice(0,300)}
+    ],
+    stream: true,
+    max_tokens: 64
+  };
   try{
-    var res=await fetch(S.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
+    var res = await fetch(S.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
-      body:JSON.stringify({
-        model:(S.model||S.fastModel),
-        messages:[
-          {role:'system',content:'用不超过10个字概括这句话的主题，只输出标题本身，不要引号、标点或解释。'},
-          {role:'user',content:String(first.content).slice(0,300)}
-        ],
-        stream:false, max_tokens:64, temperature:0.2
-      })
+      body: JSON.stringify(body)
     });
-    var j=await res.json();
-    var ti=((j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'').trim();
-    ti=ti.replace(/^["'「『《]+|["'」』》]+$/g,'').replace(/[。，、！？:：]/g,'').slice(0,18);
+    if(!res.ok){
+      var t=''; try{ t=await res.text(); }catch(e){}
+      console.warn('autoTitle http', res.status, t.slice(0,200));
+      return;
+    }
+    var reader=res.body.getReader(), dec=new TextDecoder('utf-8'), buf='', out='';
+    while(true){
+      var r=await reader.read(); if(r.done) break;
+      buf += dec.decode(r.value,{stream:true});
+      var idx;
+      while((idx=buf.indexOf('\n'))>=0){
+        var line=buf.slice(0,idx).replace(/\r$/,''); buf=buf.slice(idx+1);
+        if(line.indexOf('data:')!==0) continue;
+        var data=line.slice(5).trim();
+        if(!data || data==='[DONE]') continue;
+        try{
+          var j=JSON.parse(data);
+          var d=(j.choices&&j.choices[0]&&j.choices[0].delta)||{};
+          if(d.content) out+=d.content;
+        }catch(e){}
+      }
+    }
+    var ti=out.trim().replace(/^["'「『《]+|["'」』》]+$/g,'').replace(/[。，、！？:：\n]/g,'').slice(0,18);
     if(ti){ c.title=ti; c.titleGen=2; saveC(); renderConvs(); updateHeadTitle(); }
-  }catch(e){}
+    else { console.warn('autoTitle empty'); }
+  }catch(e){ console.warn('autoTitle error', e && e.message); }
 }
 async function send(text, retryIndex){
   text=(text||'').trim();
