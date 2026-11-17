@@ -1128,6 +1128,8 @@ function renderChat(){
       inner='<span class="dots"><i></i><i></i><i></i></span>';
     } else if(parts && parts.length){
       inner = parts.map(function(pp){ return '<div class="bubble">'+md(cleanOut(pp))+'</div>'; }).join('');
+    } else if(streaming && !m.content){
+      inner = '<span class="dots"><i></i><i></i><i></i></span>';
     } else if(S.waifu && S.chatStyle==='bubble' && m.segs){
       inner = '';
     } else {
@@ -1498,13 +1500,25 @@ async function send(text, retryIndex){
   }
 
   var model = S.model || S.fastModel;
-  var ai={role:'assistant',content:'',reasoning:'',model:model,ts:Date.now(),segs:null,shown:null,think:!!S.think};
+  var ai={role:'assistant',content:'',reasoning:'',model:model,ts:Date.now(),segs:null,shown:null,think:!!S.think,_typeLen:0};
   c.msgs.push(ai); c.ts=Date.now();
   saveC(); renderConvs(); renderChat(); updateHeadTitle(); setBusy(true); autoScroll=true;
 
   var body={model:model,messages:buildMessages(c),stream:true};
   var tp=parseFloat(S.temp);
   if(!/reasoner/i.test(model) && !isNaN(tp)) body.temperature=tp;
+
+  // 打字机：每 33ms 推进一点，让文字平滑吐出
+  if(ai._typeTimer) clearInterval(ai._typeTimer);
+  ai._typeTimer = setInterval(function(){
+    var target=(ai.content||'').length;
+    if((ai._typeLen||0) < target){
+      var remain = target-(ai._typeLen||0);
+      var step = Math.max(1, Math.ceil(remain*0.15));
+      ai._typeLen = Math.min(target,(ai._typeLen||0)+step);
+      paint();
+    }
+  }, 33);
 
   ac=new AbortController();
   var t0=Date.now(), paintLock=false;
@@ -1520,8 +1534,9 @@ async function send(text, retryIndex){
       if(th) th.outerHTML=thinkHtml(ai);
       var bd=node.querySelector('.body');
       if(bd){
-        if(S.waifu && S.chatStyle==='bubble'){ bd.innerHTML='<span class="dots"><i></i><i></i><i></i></span>'; }
-        else { bd.innerHTML=md(ai.content)+''; }
+        var shown=(ai.content||'').slice(0, ai._typeLen||0);
+        if(!shown){ bd.innerHTML='<span class="dots"><i></i><i></i><i></i></span>'; }
+        else { bd.innerHTML=md(shown); }
       }
       scrollBottom();
     });
@@ -1565,6 +1580,8 @@ async function send(text, retryIndex){
       ai.content += (ai.content?'\n\n':'')+'请求失败：'+m;
     }
   }finally{
+    if(ai._typeTimer){ clearInterval(ai._typeTimer); ai._typeTimer=null; }
+    ai._typeLen=(ai.content||'').length;
     ac=null; setBusy(false);
     c.ts=Date.now();
     var doWaifu = S.waifu && S.chatStyle==='bubble' && ai.content && ai.content.indexOf('```')<0;
