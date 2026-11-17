@@ -1444,7 +1444,7 @@ async function autoTitle(c){
     });
     if(!res.ok){
       var t=''; try{ t=await res.text(); }catch(e){}
-      toast('标题生成失败 HTTP '+res.status+' '+t.slice(0,80));
+      c.titleGen=-1; saveC();
       return;
     }
     var reader=res.body.getReader(), dec=new TextDecoder('utf-8'), buf='', out='';
@@ -1467,8 +1467,8 @@ async function autoTitle(c){
     }
     var ti=out.trim().replace(/^["'「『《]+|["'」』》]+$/g,'').replace(/[。，、！？:：\n]/g,'').slice(0,18);
     if(ti){ c.title=ti; c.titleGen=2; saveC(); renderConvs(); updateHeadTitle(); }
-    else { toast('标题生成：返回为空'); }
-  }catch(e){ toast('标题生成异常：'+((e&&e.message)||'')); }
+    else { c.titleGen=-1; saveC(); }
+  }catch(e){ c.titleGen=-1; saveC(); }
 }
 async function send(text, retryIndex){
   text=(text||'').trim();
@@ -1589,7 +1589,7 @@ async function send(text, retryIndex){
     saveC(); renderConvs(); updateHeadTitle(); renderChat();
     if(doWaifu) startWaifu(ai,c);
     if(S.autoplay && ai.content) speak(ai.content);
-    if(S.autoTitle!==false && (c.titleGen||0)<2){ setTimeout(function(){ autoTitle(c); }, 300); }
+    if(S.autoTitle!==false && !c.titleGen){ setTimeout(function(){ autoTitle(c); }, 300); }
     if(isLogged()){ sbPushAll().catch(function(){}); }
   }
 }
