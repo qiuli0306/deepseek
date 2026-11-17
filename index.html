@@ -1439,7 +1439,7 @@ async function autoTitle(c){
     });
     if(!res.ok){
       var t=''; try{ t=await res.text(); }catch(e){}
-      console.warn('autoTitle http', res.status, t.slice(0,200));
+      toast('标题生成失败 HTTP '+res.status+' '+t.slice(0,80));
       return;
     }
     var reader=res.body.getReader(), dec=new TextDecoder('utf-8'), buf='', out='';
@@ -1461,8 +1461,8 @@ async function autoTitle(c){
     }
     var ti=out.trim().replace(/^["'「『《]+|["'」』》]+$/g,'').replace(/[。，、！？:：\n]/g,'').slice(0,18);
     if(ti){ c.title=ti; c.titleGen=2; saveC(); renderConvs(); updateHeadTitle(); }
-    else { console.warn('autoTitle empty'); }
-  }catch(e){ console.warn('autoTitle error', e && e.message); }
+    else { toast('标题生成：返回为空'); }
+  }catch(e){ toast('标题生成异常：'+((e&&e.message)||'')); }
 }
 async function send(text, retryIndex){
   text=(text||'').trim();
@@ -1489,10 +1489,6 @@ async function send(text, retryIndex){
     for(var _i=0;_i<c.msgs.length;_i++){ if(c.msgs[_i].role==='user'){ _fu=c.msgs[_i]; break; } }
     if(_fu && _fu.content) c.title = shortTitle(_fu.content);
     saveC(); renderConvs(); updateHeadTitle();
-  }
-  // 立刻并行生成正式标题，不等回复结束
-  if(S.autoTitle!==false && (c.titleGen||0)<2){
-    setTimeout(function(){ autoTitle(c); }, 120);
   }
 
   var model = S.model || S.fastModel;
@@ -1570,6 +1566,7 @@ async function send(text, retryIndex){
     saveC(); renderConvs(); updateHeadTitle(); renderChat();
     if(doWaifu) startWaifu(ai,c);
     if(S.autoplay && ai.content) speak(ai.content);
+    if(S.autoTitle!==false && (c.titleGen||0)<2){ setTimeout(function(){ autoTitle(c); }, 300); }
     if(isLogged()){ sbPushAll().catch(function(){}); }
   }
 }
