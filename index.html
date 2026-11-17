@@ -2011,7 +2011,7 @@ function openSub(key){
   else if(key==='update'){ $('#subTitle').textContent=t('checkUpdate'); box.innerHTML=subInfo('1.0.2\n\n'+t('updated')); }
   else if(key==='agree'){ $('#subTitle').textContent=t('agreement'); box.innerHTML=subAgree(); }
   else if(key==='help'){ $('#subTitle').textContent=t('help'); box.innerHTML=subHelp(); }
-  else if(key==='logout'){ $('#subTitle').textContent=t('logout'); box.innerHTML=subInfo(t('logoutTxt')); }
+  else if(key==='logout'){ $('#subTitle').textContent=t('logout'); box.innerHTML=subLogout(); }
   $('#subScroll').scrollTop=0;
 }
 function closeSub(){ $('#pageSub').classList.remove('on'); }
@@ -2037,6 +2037,21 @@ function subAccount(){
     '<button class="btn primary" id="sbLogin">登录</button>'+
     '<div style="height:8px"></div>'+
     '<button class="btn" id="sbSignup">注册新账号</button>'+
+    '<div style="height:20px"></div>';
+}
+function subLogout(){
+  if(isLogged()){
+    return '<div class="sec" style="padding-top:14px">当前账号</div>'+
+      '<div class="group"><div class="row"><span class="k">邮箱</span><span class="v">'+esc((SES.user&&SES.user.email)||'')+'</span></div></div>'+
+      '<div class="hint">退出后本机对话仍然保留，只是停止同步；云端记录不会删除，重新登录同一账号即可恢复。</div>'+
+      '<div style="height:14px"></div>'+
+      '<button class="btn danger" id="doLogout">退出登录</button>'+
+      '<div style="height:20px"></div>';
+  }
+  return '<div class="sec" style="padding-top:14px">当前未登录</div>'+
+    '<div class="hint">不登录也能正常聊天，对话只存在本机，删掉软件或清除数据就没了。<br>登录后对话会同步到云端，换设备也能找回。</div>'+
+    '<div style="height:14px"></div>'+
+    '<button class="btn primary" id="goLogin">去登录</button>'+
     '<div style="height:20px"></div>';
 }
 function subInfo(txt){ return '<div class="hint" style="padding:24px 22px;font-size:14px;line-height:1.9;color:var(--fg2);white-space:pre-wrap">'+esc(txt)+'</div>'; }
@@ -2269,7 +2284,12 @@ document.addEventListener('click',async function(e){
     }
     return;
   }
-  if(e.target.id==='sbLogout'){ sbLogout(); toast('已退出登录'); $('#subScroll').innerHTML=subAccount(); renderSettings(); return; }
+  if(e.target.id==='sbLogout' || e.target.id==='doLogout'){
+    sbLogout(); toast('已退出登录');
+    $('#subScroll').innerHTML=subLogout();
+    renderSettings(); return;
+  }
+  if(e.target.id==='goLogin'){ openSub('account'); return; }
   if(e.target.id==='sbSync'){ toast('同步中…'); if(await sbSync()) toast('同步完成'); return; }
   if(e.target.id==='bgPick'){ $('#bgImage').click(); }
   if(e.target.id==='bgReset'){ S.bgImage=''; S.chatBg=''; saveS(); applyTheme(); renderSubTheme(); }
