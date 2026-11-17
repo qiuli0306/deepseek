@@ -1131,7 +1131,7 @@ function renderChat(){
     } else if(S.waifu && S.chatStyle==='bubble' && m.segs){
       inner = '';
     } else {
-      inner = md(cleanOut(m.content||'')) + (streaming?'<span class="cursor"></span>':'');
+      inner = md(cleanOut(m.content||'')) + '';
     }
     var toolsHtml='<div class="tools"><div class="l">'+
         '<button data-copy="'+idx+'" title="复制">'+ic.copy+'</button>'+
@@ -1521,7 +1521,7 @@ async function send(text, retryIndex){
       var bd=node.querySelector('.body');
       if(bd){
         if(S.waifu && S.chatStyle==='bubble'){ bd.innerHTML='<span class="dots"><i></i><i></i><i></i></span>'; }
-        else { bd.innerHTML=md(ai.content)+(busy?'<span class="cursor"></span>':''); }
+        else { bd.innerHTML=md(ai.content)+''; }
       }
       scrollBottom();
     });
