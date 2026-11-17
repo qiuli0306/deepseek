@@ -2297,12 +2297,25 @@ $('#subScroll').addEventListener('change',function(e){
   if(e.target.id==='aiColorPick'){ S.aiColor=e.target.value; saveS(); applyTheme(); renderSubTheme(); }
 });
 function exportAll(){
-  var blob=new Blob([JSON.stringify(convs,null,2)],{type:'application/json'});
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download='deepseek-chat-'+Date.now()+'.json'; a.click();
-  setTimeout(function(){ URL.revokeObjectURL(a.href); },3000);
-  toast(t('exported'));
+  var json = JSON.stringify(convs, null, 2);
+  var inWebView = /wv\)/.test(navigator.userAgent) || !document.createElement('a').hasOwnProperty('download');
+  try{
+    if(!inWebView){
+      var blob = new Blob([json], {type:'application/json'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'deepseek-chat-' + Date.now() + '.json';
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 3000);
+      toast(t('exported'));
+      return;
+    }
+  }catch(e){}
+  // 在 App 里：网页下载不可用，直接复制全部内容到剪贴板
+  copyText(json);
+  toast('已复制全部对话，可粘贴到记事本保存');
 }
+
 
 /* ================= TTS ================= */
 var audioEl=$('#audio');
