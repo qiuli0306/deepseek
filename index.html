@@ -1421,7 +1421,7 @@ async function autoTitle(c){
   var first=null;
   for(var i=0;i<c.msgs.length;i++) if(c.msgs[i].role==='user'){ first=c.msgs[i]; break; }
   if(!first || !first.content) return;
-  var model = S.model || S.fastModel;
+  var model = S.fastModel || S.model;
   var body = {
     model: model,
     messages: [
@@ -1429,7 +1429,7 @@ async function autoTitle(c){
       {role:'user',content:String(first.content).slice(0,300)}
     ],
     stream: true,
-    max_tokens: 64
+    max_tokens: 256
   };
   try{
     var res = await fetch(S.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
@@ -1456,6 +1456,7 @@ async function autoTitle(c){
           var j=JSON.parse(data);
           var d=(j.choices&&j.choices[0]&&j.choices[0].delta)||{};
           if(d.content) out+=d.content;
+          else if(d.reasoning_content && !out) out += '';
         }catch(e){}
       }
     }
