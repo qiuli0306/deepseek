@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 22:50';
+var APP_VERSION='2026-11-18 22:59';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1416,7 +1416,7 @@ function scrollBottom(force){
   if(el && (force||autoScroll)) el.scrollTop=el.scrollHeight;
 }
 $('#scroll').addEventListener('scroll',function(){
-  var el=this; autoScroll=(el.scrollHeight-el.scrollTop-el.clientHeight)<100;
+  var el=this; autoScroll=(el.scrollHeight-el.scrollTop-el.clientHeight)<20;
 });
 
 /* ================= 附件 ================= */
@@ -1821,12 +1821,18 @@ async function send(text, retryIndex, skipPush){
   ai._typeTimer = setInterval(function(){
     var target=(ai.content||'').length;
     if((ai._typeLen||0) < target){
+      if(!autoScroll){
+        // 用户滚走了：直接显示全文，停止逐字，避免滚动抖动
+        ai._typeLen = target;
+        paint();
+        return;
+      }
       var remain = target-(ai._typeLen||0);
-      var step = Math.max(1, Math.ceil(remain*0.15));
+      var step = Math.max(1, Math.ceil(remain*0.25));
       ai._typeLen = Math.min(target,(ai._typeLen||0)+step);
       paint();
     }
-  }, 33);
+  }, 66);
 
   ac=new AbortController();
   var t0=Date.now(), paintLock=false;
