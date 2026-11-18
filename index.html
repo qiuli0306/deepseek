@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 22:08';
+var APP_VERSION='2026-11-18 22:11';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2091,7 +2091,7 @@ document.addEventListener('click',async function(e){
   var fd=e.target.closest('[data-fontdel]');
   if(fd){
     var dn=fd.dataset.fontdel;
-    idbDel(dn).then(function(){
+    fontDbDel(dn).then(function(){
       if(S.fontFamily==='custom:'+dn){ S.fontFamily='system'; saveS(); applyFont(); }
       refreshSub(); toast('已删除字体 '+dn);
     });
@@ -3100,7 +3100,7 @@ var FONTS = {
   serifEn:{ name:'英文衬线', css:"Georgia,'Times New Roman',serif" }
 };
 
-function idbOpen(){
+function fontDbOpen(){
   return new Promise(function(res, rej){
     if(!window.indexedDB) return rej(new Error('no idb'));
     var r=indexedDB.open('dsclone-fonts',1);
@@ -3109,8 +3109,8 @@ function idbOpen(){
     r.onerror=function(){ rej(r.error); };
   });
 }
-function idbPut(name, buf){
-  return idbOpen().then(function(db){
+function fontDbPut(name, buf){
+  return fontDbOpen().then(function(db){
     return new Promise(function(res, rej){
       var tx=db.transaction('fonts','readwrite');
       tx.objectStore('fonts').put(buf, name);
@@ -3119,8 +3119,8 @@ function idbPut(name, buf){
     });
   });
 }
-function idbGet(name){
-  return idbOpen().then(function(db){
+function fontDbGet(name){
+  return fontDbOpen().then(function(db){
     return new Promise(function(res, rej){
       var tx=db.transaction('fonts','readonly');
       var rq=tx.objectStore('fonts').get(name);
@@ -3129,8 +3129,8 @@ function idbGet(name){
     });
   });
 }
-function idbDel(name){
-  return idbOpen().then(function(db){
+function fontDbDel(name){
+  return fontDbOpen().then(function(db){
     return new Promise(function(res){
       var tx=db.transaction('fonts','readwrite');
       tx.objectStore('fonts').delete(name);
@@ -3139,8 +3139,8 @@ function idbDel(name){
     });
   });
 }
-function idbKeys(){
-  return idbOpen().then(function(db){
+function fontDbKeys(){
+  return fontDbOpen().then(function(db){
     return new Promise(function(res){
       var tx=db.transaction('fonts','readonly');
       var rq=tx.objectStore('fonts').getAllKeys();
@@ -3163,7 +3163,7 @@ function applyFont(){
 }
 async function registerCustomFont(name){
   try{
-    var buf = await idbGet(name);
+    var buf = await fontDbGet(name);
     if(!buf) return false;
     var ff = new FontFace(name, buf);
     await ff.load();
@@ -3180,7 +3180,7 @@ function pickFontFile(){
     var name=f.name.replace(/\.[^.]+$/,'');
     try{
       var buf=await f.arrayBuffer();
-      await idbPut(name, buf);
+      await fontDbPut(name, buf);
       var ok=await registerCustomFont(name);
       if(!ok) throw new Error('load fail');
       S.fontFamily='custom:'+name; saveS(); applyFont(); refreshSub();
@@ -3192,7 +3192,7 @@ function pickFontFile(){
 
 async function renderCustomFonts(){
   var box=$('#fontCustomList'); if(!box) return;
-  var keys=await idbKeys();
+  var keys=await fontDbKeys();
   if(!keys.length){ box.innerHTML=''; return; }
   box.innerHTML = keys.map(function(k){
     var on = S.fontFamily==='custom:'+k;
