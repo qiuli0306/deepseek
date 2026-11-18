@@ -240,7 +240,7 @@ body[data-theme="dark"] .mask{background:rgba(0,0,0,.5)}
 .drawer{position:fixed;top:0;bottom:0;left:0;width:85%;max-width:340px;z-index:50;background:var(--bg);
   display:flex;flex-direction:column;transform:translateX(-102%);
   transition:transform .25s cubic-bezier(.32,.72,0,1);
-  padding-top:var(--sbh,var(--safe-t));padding-bottom:var(--safe-b);box-shadow:4px 0 24px rgba(0,0,0,.18)}
+  padding-top:calc(var(--sbh,0px) + 6px);padding-bottom:var(--safe-b);box-shadow:4px 0 24px rgba(0,0,0,.18)}
 body[data-theme="light"] .drawer{background:#fff}
 .drawer.on{transform:none}
 .drawer-head{padding:12px 12px 8px}
@@ -390,7 +390,7 @@ body[data-theme="light"] .convmenu{background:#fff}
 .convmenu button.danger{color:#ff5f5f}
 .convmenu svg{width:19px;height:19px;flex:0 0 auto}
 
-.dialog-mask{position:fixed;inset:0;background:#000b;z-index:88;display:none;align-items:center;justify-content:center;padding:26px}
+.dialog-mask{position:fixed;left:0;right:0;bottom:0;top:0;background:#000b;z-index:88;display:none;align-items:center;justify-content:center;padding:26px}
 .dialog-mask.on{display:flex}
 .dialog{background:var(--card);border-radius:18px;padding:22px;max-width:340px;width:100%;color:var(--fg)}
 body[data-theme="light"] .dialog{background:#fff}
@@ -707,7 +707,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 12:27';
+var APP_VERSION='2026-11-18 12:32';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
