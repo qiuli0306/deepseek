@@ -44,6 +44,7 @@ body.menu-open .mdwrap{-webkit-touch-callout:none;user-select:none}
   white-space:pre-wrap;background:var(--card2);padding:10px;border-radius:8px;word-break:break-all}
 .math-block:not(.math-ok):before{content:attr(data-tex)}
 .math-ok:before{content:none}
+.math-block[data-err]:before{content:"公式渲染失败：" attr(data-err);color:#e5484d}
 #msgs textarea,#msgs input{-webkit-user-select:text;user-select:text}
 #msgs .pickable{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62;font-weight:450;
@@ -716,7 +717,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 15:14';
+var APP_VERSION='2026-11-18 15:17';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2914,9 +2915,12 @@ function renderMath(scope){
       if(!ok || !window.katex) return;
       var tex = el.getAttribute('data-tex') || '';
       try{
-        katex.render(tex, el, {displayMode:true, throwOnError:false, strict:false});
+        katex.render(tex, el, {displayMode:true, throwOnError:true, strict:false});
         el.classList.add('math-ok');
-      }catch(e){ el.classList.remove('math-ok'); }
+      }catch(e){
+        el.classList.remove('math-ok');
+        el.setAttribute('data-err', (e && e.message) ? e.message : '渲染失败');
+      }
     });
   });
 }
