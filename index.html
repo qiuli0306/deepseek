@@ -35,6 +35,9 @@ html,body{margin:0;height:100%;overflow:hidden}
   background-color:var(--bg-color,transparent);
   opacity:var(--bg-alpha,1);
   filter:blur(var(--bg-blur,0px))}
+#msgs{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#msgs textarea,#msgs input{-webkit-user-select:text;user-select:text}
+#msgs .pickable{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 body{background:var(--chat-bg);color:var(--fg);font-size:16px;line-height:1.65;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Hiragino Sans","Helvetica Neue",sans-serif;
   -webkit-font-smoothing:antialiased}
@@ -686,7 +689,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 09:51';
+var APP_VERSION='2026-11-18 10:16';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -930,14 +933,17 @@ function updateHeadTitle(){
 
 /* ---------- 长按 AI 消息 ---------- */
 var aiLp=null;
+var _lpX=0,_lpY=0;
 $('#msgs').addEventListener('touchstart',function(e){
   var node=e.target.closest('.msg.ai'); if(!node) return;
-  aiLp=setTimeout(function(){ aiLp=null; openAiMenu(+node.dataset.i); },500);
+  var t=e.touches&&e.touches[0];
+  _lpX = t?t.clientX:0; _lpY = t?t.clientY:0;
+  aiLp=setTimeout(function(){ aiLp=null; openAiMenu(+node.dataset.i, _lpX, _lpY); },500);
 },{passive:true});
 $('#msgs').addEventListener('touchend',function(){ if(aiLp){ clearTimeout(aiLp); aiLp=null; } });
 $('#msgs').addEventListener('touchmove',function(){ if(aiLp){ clearTimeout(aiLp); aiLp=null; } },{passive:true});
 
-function openAiMenu(idx){
+function openAiMenu(idx, px, py){
   var c=cur(); if(!c) return;
   var m=c.msgs[idx]; if(!m) return;
   var menu=document.getElementById('aiMenu');
@@ -969,6 +975,18 @@ function openAiMenu(idx){
     '<button data-aact="share">'+ico('share')+'<span>分享</span></button>'+
     '<button data-aact="report">'+ico('flag')+'<span>举报</span></button>';
   menu.classList.add('on');
+  // 定位到按压处
+  requestAnimationFrame(function(){
+    var mw=menu.offsetWidth||220, mh=menu.offsetHeight||300;
+    var vw=window.innerWidth, vh=window.innerHeight;
+    var left=(px||vw/2)-mw/2, top=(py||vh/2)+10;
+    if(left<8) left=8;
+    if(left+mw>vw-8) left=vw-mw-8;
+    if(top+mh>vh-8) top=(py||vh/2)-mh-10;
+    if(top<8) top=8;
+    menu.style.left=left+'px'; menu.style.top=top+'px';
+    menu.style.right='auto'; menu.style.bottom='auto';
+  });
   $('#convMask').classList.add('on');
   menu.onclick=function(ev){
     var b=ev.target.closest('[data-aact]'); if(!b) return;
@@ -976,6 +994,13 @@ function openAiMenu(idx){
     menu.classList.remove('on'); $('#convMask').classList.remove('on');
     if(act==='copy') copyText(m.content||'');
     if(act==='select'){
+      var node=document.querySelector('.msg.ai[data-i="'+idx+'"] .mdwrap');
+      if(node){ node.classList.add('pickable'); }
+      toast('现在可以拖动选择文字，再点复制');
+      menu.classList.remove('on'); $('#convMask').classList.remove('on');
+      return;
+    }
+    if(act==='copy'){
       var node=document.querySelector('.msg.ai[data-i="'+idx+'"] .body');
       if(node){
         node.style.userSelect='text'; node.style.webkitUserSelect='text';
@@ -1363,9 +1388,44 @@ function updateSendIcon(){
   b.classList.toggle('send', !!has);
   b.innerHTML=has?ICON_ARROW:ICON_MIC;
 }
+var _batt=null;
+(function(){
+  try{
+    if(navigator.getBattery) navigator.getBattery().then(function(b){
+      _batt=b;
+      b.addEventListener('levelchange',function(){ _batt=b; });
+    }).catch(function(){});
+  }catch(e){}
+})();
+
+function envContext(){
+  var parts=[];
+  if(S.injectTime!==false){
+    var d=new Date();
+    var wd='日一二三四五六'[d.getDay()];
+    var h=d.getHours();
+    var period = h<6?'凌晨':h<9?'早上':h<12?'上午':h<14?'中午':h<18?'下午':h<23?'晚上':'深夜';
+    var p2=function(n){ return (n<10?'0':'')+n; };
+    parts.push('[当前时间：'+(d.getFullYear())+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+' 周'+wd+' '+period+' '+p2(h)+':'+p2(d.getMinutes())+']');
+  }
+  if(S.injectDevice){
+    var seg=[];
+    if(_batt && _batt.level!=null) seg.push('电量 '+Math.round(_batt.level*100)+'%'+( _batt.charging?'（充电中）':''));
+    try{
+      var conn=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+      if(conn && conn.effectiveType) seg.push(conn.effectiveType.toUpperCase()+' 网络');
+      else if(navigator.onLine===false) seg.push('离线');
+    }catch(e){}
+    if(seg.length) parts.push('[设备：'+seg.join('，')+']');
+  }
+  return parts.length ? parts.join('\n')+'\n' : '';
+}
+
 function buildMessages(c){
   var arr=[];
   var hint=langHint();
+  var env=envContext();
+  if(env) arr.push({role:'system',content:env+'（以上是真实环境信息，回答涉及时间、日期、星期时以此为准）'});
   if(hint) arr.push({role:'system',content:hint});
   if(S.chatStyle==='bubble'){
     arr.push({role:'system',content:
@@ -1770,7 +1830,9 @@ document.addEventListener('click',async function(e){
 
   var sw=e.target.closest('[data-toggle]');
   if(sw){
-    var k=sw.dataset.toggle; S[k]=!S[k];
+    var k=sw.dataset.toggle;
+    if(k==='injectTime'){ S.injectTime = (S.injectTime===false) ? true : false; }
+    else { S[k]=!S[k]; }
     if(k==='waifu' && S.waifu && S.chatStyle!=='bubble'){
       toast('当前是命令框，Waifu 只在「对话框」风格生效');
     }
@@ -2141,6 +2203,11 @@ function subThemeSub(){
     '<div class="row"><span class="k">'+t('showAvatar')+'<div style="font-size:12px;color:var(--fg3);line-height:1.5;margin-top:2px">'+t('showAvatarD')+'</div></span><div class="sw '+(S.showAvatar?'on':'')+'" data-toggle="showAvatar"><i></i></div></div>'+
 
 
+  '</div>'+
+  '<div class="sec">额外信息注入</div>'+
+  '<div class="group">'+
+    '<div class="row"><span class="k">注入时间<div style="font-size:12px;color:var(--fg3);margin-top:2px">把当前日期、星期、时段告诉 AI</div></span><div class="sw '+((S.injectTime!==false)?'on':'')+'" data-toggle="injectTime"><i></i></div></div>'+
+    '<div class="row"><span class="k">注入设备信息<div style="font-size:12px;color:var(--fg3);margin-top:2px">电量、网络类型</div></span><div class="sw '+(S.injectDevice?'on':'')+'" data-toggle="injectDevice"><i></i></div></div>'+
   '</div>'+
   '<div class="sec">背景与气泡</div>'+
   '<div class="group">'+
