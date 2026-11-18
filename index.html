@@ -209,23 +209,23 @@ body[data-theme="light"] .code code{color:#1f2937}
 .attach .item .x{position:absolute;top:2px;right:2px;width:17px;height:17px;border-radius:50%;
   background:#000a;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
 
-.inputbar{background:var(--input);border:1px solid var(--line);border-radius:30px;padding:15px 14px 13px 18px}
+.inputbar{background:var(--input);border:1px solid var(--line);border-radius:24px;padding:11px 9px 10px 14px}
 .inputbar textarea{width:100%;background:none;border:0;outline:none;resize:none;
-  font-size:16.5px;line-height:1.55;max-height:132px;min-height:28px;padding:3px 0;color:var(--fg)}
+  font-size:16px;line-height:1.5;max-height:132px;min-height:26px;padding:2px 0;color:var(--fg)}
 .inputbar textarea::placeholder{color:var(--fg3)}
 .holdtalk{padding:7px 0;font-size:16px;color:var(--fg3);text-align:center;cursor:pointer;user-select:none;
   -webkit-user-select:none;touch-action:none}
 .holdtalk.rec{color:var(--blue-txt)}
-.ibrow{display:flex;align-items:center;gap:8px;margin-top:11px}
-.toggles{display:flex;gap:10px;flex:1;min-width:0}
-.toggle{display:flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;
-  border:1px solid var(--line);color:var(--fg2);font-size:13.5px;white-space:nowrap}
-.toggle svg{width:16px;height:16px}
+.ibrow{display:flex;align-items:center;gap:6px;margin-top:9px}
+.toggles{display:flex;gap:8px;flex:1;min-width:0;overflow:hidden}
+.toggle{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;
+  border:1px solid var(--line);color:var(--fg2);font-size:12px;white-space:nowrap;flex:0 0 auto}
+.toggle svg{width:13px;height:13px}
 .toggle.on{border-color:transparent;background:var(--blue-soft);color:var(--blue-txt)}
 .acts{display:flex;align-items:center;gap:10px;flex:0 0 auto}
-.circle{width:52px;height:52px;border-radius:50%;background:var(--card2);display:flex;align-items:center;
-  justify-content:center;color:var(--fg);flex:0 0 auto}
-.circle svg{width:22px;height:22px}
+.circle{width:31px;height:31px;border-radius:50%;background:var(--card2);display:flex;align-items:center;
+  justify-content:center;color:var(--fg);flex:0 0 auto;box-sizing:border-box;padding:0;border:0}
+.circle svg{width:16px;height:16px}
 .circle:active{opacity:.7}
 .circle.send{background:var(--blue);color:#fff}
 .circle.send:disabled{background:var(--card2);color:var(--fg3)}
@@ -547,12 +547,12 @@ body[data-theme="light"] .toast{background:#222c}
   <input type="file" id="fileDoc" multiple style="display:none">
 
   <div class="convmenu-mask" id="convMask"></div>
-  <div id="selBar" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(84px + var(--safe-b));z-index:97;
-       background:var(--card);border-radius:14px;box-shadow:0 8px 30px #0002,0 0 0 1px var(--line);
-       padding:8px;gap:8px;align-items:center">
-    <button id="selCopy" class="btn primary" style="margin:0;padding:10px;flex:1;font-size:14px">复制选中</button>
-    <button id="selAll" class="btn" style="margin:0;padding:10px;flex:1;font-size:14px">全选</button>
-    <button id="selDone" class="btn" style="margin:0;padding:10px;flex:1;font-size:14px">完成</button>
+  <div id="selBar" style="display:none;position:fixed;z-index:97;width:auto;
+       background:var(--card);border-radius:12px;box-shadow:0 8px 28px #0003,0 0 0 1px var(--line);
+       padding:5px;gap:2px;align-items:center">
+    <button id="selCopy" style="background:none;color:var(--fg);font-size:14px;padding:8px 14px;border-radius:9px">复制</button>
+    <button id="selAll" style="background:none;color:var(--fg);font-size:14px;padding:8px 14px;border-radius:9px">全选</button>
+    <button id="selDone" style="background:none;color:var(--fg2);font-size:14px;padding:8px 14px;border-radius:9px">完成</button>
   </div>
   <div class="convmenu" id="convMenu">
     <button data-cm="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>重命名</span></button>
@@ -703,7 +703,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 10:51';
+var APP_VERSION='2026-11-18 10:56';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1027,8 +1027,12 @@ function openAiMenu(idx, px, py){
       if(node){
         document.querySelectorAll('#msgs .pickable').forEach(function(el){ el.classList.remove('pickable'); });
         node.classList.add('pickable');
-        var sb=$('#selBar'); sb.style.display='flex';
         window.__selNode = node;
+        try{
+          var rg=document.createRange(); rg.selectNodeContents(node);
+          var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+        }catch(e){}
+        showSelBar();
       }
       return;
     }
@@ -2024,6 +2028,37 @@ function openConvMenu(id){
   $('#convMenu').classList.add('on'); $('#convMask').classList.add('on');
 }
 function closeConvMenu(){ $('#convMenu').classList.remove('on'); $('#convMask').classList.remove('on'); }
+function showSelBar(){
+  var sb=$('#selBar'); if(!sb) return;
+  sb.style.display='flex';
+  sb.style.left='12px'; sb.style.right='12px'; sb.style.bottom='auto'; sb.style.top='auto';
+  var rect=null;
+  try{
+    var sel=window.getSelection();
+    if(sel && sel.rangeCount){ rect=sel.getRangeAt(0).getBoundingClientRect(); }
+  }catch(e){}
+  if(!rect || (!rect.width && !rect.height)){
+    var n=window.__selNode;
+    if(n) rect=n.getBoundingClientRect();
+  }
+  if(rect){
+    var vh=window.innerHeight, barH=52;
+    var top = rect.top - barH - 10;
+    if(top < 60) top = Math.min(rect.bottom + 10, vh - barH - 20);
+    if(top < 60) top = vh - barH - 90;
+    sb.style.top = top + 'px';
+    sb.style.bottom = 'auto';
+    var barW = sb.offsetWidth || 170;
+    var left = rect.left + rect.width/2 - barW/2;
+    if(left < 8) left = 8;
+    if(left + barW > window.innerWidth - 8) left = window.innerWidth - barW - 8;
+    sb.style.left = left + 'px';
+    sb.style.right = 'auto';
+  } else {
+    sb.style.top='auto'; sb.style.bottom='90px';
+  }
+}
+
 function exitSelectMode(){
   document.querySelectorAll('#msgs .pickable').forEach(function(el){ el.classList.remove('pickable'); });
   var sb=$('#selBar'); if(sb) sb.style.display='none';
