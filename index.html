@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 22:59';
+var APP_VERSION='2026-11-18 23:05';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1416,7 +1416,7 @@ function scrollBottom(force){
   if(el && (force||autoScroll)) el.scrollTop=el.scrollHeight;
 }
 $('#scroll').addEventListener('scroll',function(){
-  var el=this; autoScroll=(el.scrollHeight-el.scrollTop-el.clientHeight)<20;
+  var el=this; autoScroll=(el.scrollHeight-el.scrollTop-el.clientHeight)<=1;
 });
 
 /* ================= 附件 ================= */
@@ -1790,7 +1790,7 @@ async function send(text, retryIndex, skipPush){
   }
 
   var model = S.model || S.fastModel;
-  var ai={role:'assistant',content:'',reasoning:'',model:model,ts:Date.now(),segs:null,shown:null,think:!!S.think,_typeLen:0};
+  var ai={role:'assistant',content:'',reasoning:'',model:model,ts:Date.now(),segs:null,shown:null,think:!!S.think};
   c.msgs.push(ai); c.ts=Date.now();
   saveC(); renderConvs(); renderChat(); updateHeadTitle(); setBusy(true); autoScroll=true;
 
@@ -1816,24 +1816,6 @@ async function send(text, retryIndex, skipPush){
   var tp=parseFloat(S.temp);
   if(!/reasoner/i.test(model) && !isNaN(tp)) body.temperature=tp;
 
-  // 打字机：每 33ms 推进一点，让文字平滑吐出
-  if(ai._typeTimer) clearInterval(ai._typeTimer);
-  ai._typeTimer = setInterval(function(){
-    var target=(ai.content||'').length;
-    if((ai._typeLen||0) < target){
-      if(!autoScroll){
-        // 用户滚走了：直接显示全文，停止逐字，避免滚动抖动
-        ai._typeLen = target;
-        paint();
-        return;
-      }
-      var remain = target-(ai._typeLen||0);
-      var step = Math.max(1, Math.ceil(remain*0.25));
-      ai._typeLen = Math.min(target,(ai._typeLen||0)+step);
-      paint();
-    }
-  }, 66);
-
   ac=new AbortController();
   var t0=Date.now(), paintLock=false;
   function paint(){
@@ -1848,7 +1830,7 @@ async function send(text, retryIndex, skipPush){
       if(th) th.outerHTML=thinkHtml(ai);
       var bd=node.querySelector('.body');
       if(bd){
-        var shown=(ai.content||'').slice(0, ai._typeLen||0);
+        var shown=(ai.content||'');
         if(!shown){ bd.innerHTML='<span class="dots"><i></i><i></i><i></i></span>'; }
         else { bd.innerHTML=md(shown); }
       }
@@ -1899,8 +1881,6 @@ async function send(text, retryIndex, skipPush){
       ai.content += (ai.content?'\n\n':'')+'请求失败：'+m;
     }
   }finally{
-    if(ai._typeTimer){ clearInterval(ai._typeTimer); ai._typeTimer=null; }
-    ai._typeLen=(ai.content||'').length;
     ac=null; setBusy(false);
     c.ts=Date.now();
     var doWaifu = S.waifu && S.chatStyle==='bubble' && ai.content && ai.content.indexOf('```')<0;
