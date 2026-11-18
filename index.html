@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 22:03';
+var APP_VERSION='2026-11-18 22:08';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3340,11 +3340,24 @@ applyLang();
 (function bootStorage(){
   (async function(){
     try{
+      // 全量扫描恢复：把库里所有可能的对话都捞出来
+      var keys = await idbAllKeys().catch(function(){ return []; });
+      var recovered = [];
+      for(var _i=0;_i<keys.length;_i++){
+        var _k = keys[_i];
+        if(String(_k)==='convs') continue;
+        try{
+          var _v = await idbGet(_k);
+          if(_v && _v.id && _v.msgs) recovered.push(_v);
+          else if(Array.isArray(_v) && _v.length && _v[0] && _v[0].msgs) recovered = recovered.concat(_v);
+        }catch(e){}
+      }
       var mainData = await idbGet('convs').catch(function(){ return null; });
       var cached = await loadConvCaches().catch(function(){ return []; });
       var all = [];
       if(Array.isArray(mainData)) all = all.concat(mainData);
       if(Array.isArray(cached)) all = all.concat(cached);
+      if(Array.isArray(recovered)) all = all.concat(recovered);
 
       if(all.length){
         var map={};
@@ -3373,7 +3386,10 @@ applyLang();
       _storeReady = true;
       _loaded = true;
       _storeState.idb='可用'; _storeState.ready=true; _storeState.count=convs.length;
-      try{ idbSet('convs', convs).catch(function(){}); }catch(e){}
+      // 只有确实有数据、或确认是全新用户时才写回，避免空列表覆盖历史
+      if(convs.length || window.__storeEmptyConfirmed){
+        try{ idbSet('convs', convs).catch(function(){}); }catch(e){}
+      }
     }catch(e){
       _storeReady = false;
       _loaded = true;
