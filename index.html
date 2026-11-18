@@ -712,7 +712,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 15:07';
+var APP_VERSION='2026-11-18 15:10';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2859,27 +2859,43 @@ $('#dlgMask').addEventListener('click',function(e){ if(e.target.id==='dlgMask') 
 /* ================= LaTeX（KaTeX 按需加载） ================= */
 var _katexState = 0; // 0=未加载 1=加载中 2=可用 -1=失败
 var _katexCbs = [];
+var KATEX_CDNS = [
+  'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/',
+  'https://registry.npmmirror.com/katex/0.16.9/files/dist/',
+  'https://unpkg.com/katex@0.16.9/dist/',
+  'https://cdnjs.cloudflare.com/ajax/libs/katex/0.16.9/'
+];
 function loadKatex(cb){
   if(_katexState===2) return cb(true);
   if(_katexState===-1) return cb(false);
   _katexCbs.push(cb);
   if(_katexState===1) return;
   _katexState = 1;
-  var CDN='https://registry.npmmirror.com/katex/0.16.9/files/dist/';
-  var link=document.createElement('link');
-  link.rel='stylesheet'; link.href=CDN+'katex.min.css';
-  document.head.appendChild(link);
-  var sc=document.createElement('script');
-  sc.src=CDN+'katex.min.js';
-  sc.onload=function(){
-    _katexState=2;
-    _katexCbs.splice(0).forEach(function(f){ try{ f(true); }catch(e){} });
-  };
-  sc.onerror=function(){
-    _katexState=-1;
-    _katexCbs.splice(0).forEach(function(f){ try{ f(false); }catch(e){} });
-  };
-  document.head.appendChild(sc);
+  var i = 0;
+  function finish(ok){
+    _katexState = ok ? 2 : -1;
+    _katexCbs.splice(0).forEach(function(f){ try{ f(ok); }catch(e){} });
+  }
+  function tryNext(){
+    if(i >= KATEX_CDNS.length) return finish(false);
+    var base = KATEX_CDNS[i++];
+    var link=document.createElement('link');
+    link.rel='stylesheet'; link.href=base+'katex.min.css';
+    document.head.appendChild(link);
+    var sc=document.createElement('script');
+    sc.src=base+'katex.min.js';
+    var done=false;
+    var timer=setTimeout(function(){ if(!done){ done=true; tryNext(); } }, 8000);
+    sc.onload=function(){
+      if(done) return; done=true; clearTimeout(timer);
+      if(window.katex) finish(true); else tryNext();
+    };
+    sc.onerror=function(){
+      if(done) return; done=true; clearTimeout(timer); tryNext();
+    };
+    document.head.appendChild(sc);
+  }
+  tryNext();
 }
 
 function renderMath(scope){
