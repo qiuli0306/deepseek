@@ -1628,6 +1628,19 @@ $('#btnSend').addEventListener('click',function(){
 /* ---------- 语音输入 ---------- */
 var voiceMode=false, rec=null, listening=false;
 function setVoiceMode(on){
+  if(on){
+    var _SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!_SR){
+      $('#dlgTitle').textContent='语音输入暂不支持';
+      $('#dlgText').innerHTML='语音功能正在开发中，后续版本会支持，敬请期待。<br><br>现在可以先用键盘打字，一样方便。';
+      $('#dlgMask').classList.add('on');
+      voiceMode=false;
+      $('#input').style.display='';
+      $('#holdTalk').style.display='none';
+      updateSendIcon();
+      return;
+    }
+  }
   voiceMode=on;
   $('#input').style.display = on?'none':'';
   $('#holdTalk').style.display = on?'block':'none';
@@ -1666,7 +1679,10 @@ function startRec(){
       listening=false;
       $('#holdTalk').textContent='按住说话';
       $('#holdTalk').classList.remove('rec');
-      toast('语音识别失败：'+(ev.error||''));
+      $('#dlgTitle').textContent='语音输入暂不支持';
+      $('#dlgText').innerHTML='语音功能正在开发中，后续版本会支持，敬请期待。<br><br>现在可以先用键盘打字，一样方便。';
+      $('#dlgMask').classList.add('on');
+      setVoiceMode(false);
     };
     rec.onend=function(){
       listening=false;
