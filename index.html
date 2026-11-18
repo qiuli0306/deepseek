@@ -154,12 +154,12 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .avatar svg{width:100%;height:100%}
 
 /* 消息工具条 */
-.tools{display:flex;align-items:center;justify-content:space-between;margin-top:14px;color:var(--fg3)}
-.tools .l{display:flex;align-items:center;gap:22px}
+.tools{display:flex;align-items:center;justify-content:space-between;margin-top:10px;color:var(--fg3)}
+.tools .l{display:flex;align-items:center;gap:15px}
 .tools .r{display:flex;align-items:center;gap:12px}
-.tools button{width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--fg3)}
+.tools button{width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:var(--fg3)}
 .tools button:active{opacity:.5}
-.tools svg{width:20px;height:20px}
+.tools svg{width:21px;height:21px}
 .tools button.on{color:var(--blue)}
 
 /* 思考块 */
@@ -200,7 +200,7 @@ body[data-theme="light"] .code code{color:#1f2937}
 .filecard .s{color:var(--fg3);font-size:11.5px}
 
 /* 输入区 */
-.composer{flex:0 0 auto;padding:0 12px calc(6px + var(--safe-b))}
+.composer{flex:0 0 auto;padding:0 12px var(--safe-b)}
 .composer .wrap{padding:0;max-width:768px}
 .attach{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .attach .item{position:relative;width:56px;height:56px;border-radius:10px;overflow:hidden;background:var(--card)}
@@ -209,7 +209,7 @@ body[data-theme="light"] .code code{color:#1f2937}
 .attach .item .x{position:absolute;top:2px;right:2px;width:17px;height:17px;border-radius:50%;
   background:#000a;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
 
-.inputbar{background:var(--input);border:1px solid var(--line);border-radius:28px;padding:14px 13px 12px 18px}
+.inputbar{background:var(--input);border:1px solid var(--line);border-radius:30px;padding:15px 14px 13px 18px}
 .inputbar textarea{width:100%;background:none;border:0;outline:none;resize:none;
   font-size:16.5px;line-height:1.55;max-height:132px;min-height:28px;padding:3px 0;color:var(--fg)}
 .inputbar textarea::placeholder{color:var(--fg3)}
@@ -223,12 +223,13 @@ body[data-theme="light"] .code code{color:#1f2937}
 .toggle svg{width:16px;height:16px}
 .toggle.on{border-color:transparent;background:var(--blue-soft);color:var(--blue-txt)}
 .acts{display:flex;align-items:center;gap:10px;flex:0 0 auto}
-.circle{width:36px;height:36px;border-radius:50%;background:var(--card2);display:flex;align-items:center;
-  justify-content:center;color:var(--fg)}
+.circle{width:52px;height:52px;border-radius:50%;background:var(--card2);display:flex;align-items:center;
+  justify-content:center;color:var(--fg);flex:0 0 auto}
+.circle svg{width:22px;height:22px}
 .circle:active{opacity:.7}
 .circle.send{background:var(--blue);color:#fff}
 .circle.send:disabled{background:var(--card2);color:var(--fg3)}
-.footnote{text-align:center;font-size:11px;color:var(--fg3);padding:9px 0 0}
+.footnote{text-align:center;font-size:11px;color:var(--fg3);padding:6px 0 2px}
 
 /* 抽屉 */
 .mask{position:fixed;inset:0;background:#000a;opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
@@ -702,7 +703,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 10:39';
+var APP_VERSION='2026-11-18 10:51';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
