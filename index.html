@@ -52,7 +52,7 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .main{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
 
 /* 顶栏 */
-.header{height:56px;flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:0 8px;padding-top:var(--safe-t)}
+.header{height:52px;flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:0 8px}
 .ibtn{width:42px;height:42px;display:flex;align-items:center;justify-content:center;color:var(--fg);flex:0 0 auto}
 .ibtn:active{opacity:.45}
 .ibtn.on{color:var(--blue)}
@@ -234,12 +234,13 @@ body[data-theme="light"] .code code{color:#1f2937}
 .footnote{text-align:center;font-size:11px;color:var(--fg3);padding:6px 0 2px}
 
 /* 抽屉 */
-.mask{position:fixed;inset:0;background:#000a;opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
 .mask.on{opacity:1;pointer-events:auto}
+body[data-theme="dark"] .mask{background:rgba(0,0,0,.5)}
 .drawer{position:fixed;top:0;bottom:0;left:0;width:85%;max-width:340px;z-index:50;background:var(--bg);
   display:flex;flex-direction:column;transform:translateX(-102%);
   transition:transform .25s cubic-bezier(.32,.72,0,1);
-  padding-top:var(--safe-t);padding-bottom:var(--safe-b);box-shadow:4px 0 24px rgba(0,0,0,.45)}
+  padding-top:var(--sbh,var(--safe-t));padding-bottom:var(--safe-b);box-shadow:4px 0 24px rgba(0,0,0,.18)}
 body[data-theme="light"] .drawer{background:#fff}
 .drawer.on{transform:none}
 .drawer-head{padding:12px 12px 8px}
@@ -276,7 +277,7 @@ body[data-theme="light"] .item.on{background:#e8edff;color:#2f49d9}
   transform:translateX(100%);transition:transform .25s cubic-bezier(.32,.72,0,1)}
 .page.on{transform:none}
 .page.sub{z-index:70}
-.page-h{height:56px;flex:0 0 auto;display:flex;align-items:center;padding:0 6px;padding-top:var(--safe-t)}
+.page-h{height:52px;flex:0 0 auto;display:flex;align-items:center;padding:0 6px}
 .page-h .t{flex:1;text-align:center;font-size:16.5px;font-weight:600}
 .sec{font-size:12.5px;color:var(--fg3);padding:20px 18px 8px}
 .group{background:var(--card);border-radius:16px;margin:0 12px;overflow:hidden}
@@ -706,7 +707,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 11:53';
+var APP_VERSION='2026-11-18 12:27';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
