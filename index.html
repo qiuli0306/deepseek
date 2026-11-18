@@ -35,7 +35,10 @@ html,body{margin:0;height:100%;overflow:hidden}
   background-color:var(--bg-color,transparent);
   opacity:var(--bg-alpha,1);
   filter:blur(var(--bg-blur,0px))}
-#msgs{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+body.menu-open #composer,body.menu-open #inputBar,body.menu-open .composer{opacity:.15;pointer-events:none}
+body.menu-open .mdwrap{-webkit-touch-callout:none;user-select:none}
+#msgs,#msgs *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#msgs .pickable,#msgs .pickable *{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 #msgs textarea,#msgs input{-webkit-user-select:text;user-select:text}
 #msgs .pickable{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 body{background:var(--chat-bg);color:var(--fg);font-size:16px;line-height:1.65;
@@ -309,7 +312,7 @@ body[data-theme="light"] .chatstyle button{background:#fff}
 
 /* 朗读音色 */
 .voicepage{position:fixed;inset:0;z-index:75;background:var(--bg);display:flex;flex-direction:column;
-  transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1)}
+  opacity:0;pointer-events:none;transform:scale(.96);transition:opacity .12s,transform .12s;transition:transform .28s cubic-bezier(.32,.72,0,1)}
 .voicepage.on{transform:none}
 .voice-h{height:56px;display:flex;align-items:center;padding:0 12px;padding-top:var(--safe-t)}
 .voice-h .t{flex:1;text-align:center;font-size:16.5px;font-weight:600}
@@ -356,15 +359,18 @@ body[data-theme="light"] .sheet-row button{background:#fff}
 body[data-theme="light"] .sheet-cancel{background:#fff}
 
 /* AI 消息长按菜单 */
-.aimenu{position:fixed;left:0;right:0;bottom:0;z-index:86;background:var(--card);
-  border-radius:16px 16px 0 0;transform:translateY(102%);
-  transition:transform .26s cubic-bezier(.32,.72,0,1);padding-bottom:var(--safe-b);overflow:hidden}
-.aimenu.on{transform:none}
-.aimenu button{display:flex;align-items:center;gap:16px;width:100%;padding:15px 22px;
-  font-size:16px;color:var(--fg);border-bottom:1px solid var(--line);text-align:left}
+.aimenu{position:fixed;z-index:96;width:178px;border-radius:14px;padding:4px;
+  background:var(--card);box-shadow:0 8px 30px #0002,0 0 0 1px var(--line);
+  opacity:0;pointer-events:none;transform:scale(.96);transform-origin:top left;
+  transition:opacity .12s ease,transform .12s ease}
+.aimenu.on{opacity:1;pointer-events:auto;transform:none}
+.aimenu button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;
+  border-radius:10px;font-size:14.5px;color:var(--fg);border:0;text-align:left;background:none}
+.aimenu svg{width:18px;height:18px;flex:0 0 auto;color:var(--fg2)}
+.aimenu button:active{background:var(--card2)}
 .aimenu button:last-child{border-bottom:0}
 .aimenu button:active{background:var(--card2)}
-.aimenu svg{width:22px;height:22px;flex:0 0 auto;color:var(--fg)}
+.aimenu svg{width:18px;height:18px;flex:0 0 auto;color:var(--fg2)}
 
 /* 会话菜单 */
 .convmenu-mask{position:fixed;inset:0;background:#0009;opacity:0;pointer-events:none;transition:opacity .18s;z-index:85}
@@ -689,7 +695,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 10:16';
+var APP_VERSION='2026-11-18 10:35';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -934,6 +940,9 @@ function updateHeadTitle(){
 /* ---------- 长按 AI 消息 ---------- */
 var aiLp=null;
 var _lpX=0,_lpY=0;
+document.addEventListener('contextmenu',function(e){
+  if(e.target.closest('#msgs') && !e.target.closest('.pickable')){ e.preventDefault(); }
+});
 $('#msgs').addEventListener('touchstart',function(e){
   var node=e.target.closest('.msg.ai'); if(!node) return;
   var t=e.touches&&e.touches[0];
@@ -974,6 +983,9 @@ function openAiMenu(idx, px, py){
     '<button data-aact="speak">'+ico('speaker')+'<span>朗读</span></button>'+
     '<button data-aact="share">'+ico('share')+'<span>分享</span></button>'+
     '<button data-aact="report">'+ico('flag')+'<span>举报</span></button>';
+  try{ window.getSelection().removeAllRanges(); }catch(e){}
+  document.querySelectorAll('#msgs .pickable').forEach(function(el){ el.classList.remove('pickable'); });
+  document.body.classList.add('menu-open');
   menu.classList.add('on');
   // 定位到按压处
   requestAnimationFrame(function(){
@@ -990,6 +1002,14 @@ function openAiMenu(idx, px, py){
   $('#convMask').classList.add('on');
   menu.onclick=function(ev){
     var b=ev.target.closest('[data-aact]'); if(!b) return;
+    function closeMenu(){
+      menu.classList.remove('on');
+      $('#convMask').classList.remove('on');
+      document.body.classList.remove('menu-open');
+      try{ window.getSelection().removeAllRanges(); }catch(e){}
+    }
+    closeMenu();
+    setTimeout(closeMenu, 0);
     var act=b.dataset.aact;
     menu.classList.remove('on'); $('#convMask').classList.remove('on');
     if(act==='copy') copyText(m.content||'');
@@ -1421,6 +1441,29 @@ function envContext(){
   return parts.length ? parts.join('\n')+'\n' : '';
 }
 
+async function webSearch(query){
+  var base=(S.baseUrl||'').replace(/\/+$/,'');
+  var url = /\/v1$/.test(base) ? base+'/tools/search' : base+'/v1/tools/search';
+  var res = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
+    body: JSON.stringify({query:String(query||'').slice(0,120), count:5, need_content:true})
+  });
+  if(!res.ok){
+    var t=''; try{ t=await res.text(); }catch(e){}
+    throw new Error('HTTP '+res.status+' '+t.slice(0,120));
+  }
+  var j = await res.json();
+  var list = j.results||j.data||j.items||j.documents||j.list||[];
+  if(!Array.isArray(list)||!list.length) return '';
+  return list.slice(0,5).map(function(it,i){
+    var title=it.title||it.name||it.headline||'';
+    var link=it.url||it.link||it.href||'';
+    var body=it.content||it.snippet||it.text||it.summary||it.description||'';
+    return (i+1)+'. '+title+(link?'\n   '+link:'')+(body?'\n   '+String(body).replace(/\s+/g,' ').slice(0,400):'');
+  }).join('\n\n');
+}
+
 function buildMessages(c){
   var arr=[];
   var hint=langHint();
@@ -1589,7 +1632,25 @@ async function send(text, retryIndex){
   c.msgs.push(ai); c.ts=Date.now();
   saveC(); renderConvs(); renderChat(); updateHeadTitle(); setBusy(true); autoScroll=true;
 
-  var body={model:model,messages:buildMessages(c),stream:true};
+  var _searchCtx='';
+  if(S.webSearch){
+    try{
+      toast('正在联网搜索…');
+      _searchCtx = await webSearch(text || (c.msgs[c.msgs.length-2]&&c.msgs[c.msgs.length-2].content) || '');
+    }catch(e){ toast('搜索失败：'+(e.message||'')); }
+  }
+  var _msgs=buildMessages(c);
+  if(_searchCtx){
+    for(var _k=_msgs.length-1;_k>=0;_k--){
+      if(_msgs[_k].role==='user'){
+        if(typeof _msgs[_k].content==='string'){
+          _msgs[_k].content += '\n\n[以下是刚刚联网搜索到的实时资料，请优先依据这些内容回答，并在结尾注明来源链接]\n'+_searchCtx;
+        }
+        break;
+      }
+    }
+  }
+  var body={model:model,messages:_msgs,stream:true};
   var tp=parseFloat(S.temp);
   if(!/reasoner/i.test(model) && !isNaN(tp)) body.temperature=tp;
 
@@ -1955,6 +2016,7 @@ $('#convMask').addEventListener('click',function(){
   closeConvMenu();
   var mm=document.getElementById('msgMenu'); if(mm) mm.classList.remove('on');
   var am=document.getElementById('aiMenu'); if(am) am.classList.remove('on');
+  document.body.classList.remove('menu-open');
 });
 $('#convMenu').addEventListener('click',function(e){
   var b=e.target.closest('[data-cm]'); if(!b) return;
