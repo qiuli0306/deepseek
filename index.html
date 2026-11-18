@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 21:12';
+var APP_VERSION='2026-11-18 21:59';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -750,6 +750,7 @@ try{ recentImgs=JSON.parse(localStorage.getItem('dsclone_recent')||'[]')||[]; }c
 /* ============ IndexedDB 存储（大容量，替代 localStorage 存对话） ============ */
 var _idbDB = null, _idbReady = false, _storeReady = false;
 var _storeState = { idb:'未检测', ready:false, count:0, err:'' };
+var _loaded = false;
 function idbOpenDB(){
   return new Promise(function(res, rej){
     if(_idbDB) return res(_idbDB);
@@ -789,19 +790,18 @@ function idbHas(key){
 
 function saveS(){ localStorage.setItem(SK, JSON.stringify(S)); }
 function saveC(){
-  if(!_storeReady && !window.__storeEmptyConfirmed) return;
   // 1) 当前对话单独存（小、快，切后台也不容易丢）
   try{
     var c=cur();
     if(c) idbSet('conv_'+(c.id||'cur'), c).catch(function(){});
   }catch(e){}
-  // 2) 整体存（重，但保证完整性）
+  // 2) 整体存（仅在首次载入完成后，避免空列表冲掉历史）
+  if(!_loaded) return;
   try{ idbSet('convs', convs).catch(function(){ toast('保存失败，请检查存储空间'); }); }
   catch(e){ toast('保存失败：'+(e.message||'')); }
 }
 
 function saveCurOnly(){
-  if(!_storeReady && !window.__storeEmptyConfirmed) return;
   try{ var c=cur(); if(c) idbSet('conv_'+(c.id||'cur'), c).catch(function(){}); }catch(e){}
 }
 
@@ -3326,20 +3326,22 @@ applyLang();
       if(has){
         var data = await idbGet('convs');
         if(Array.isArray(data) && data.length){
-          convs = data;
-          // 用单条缓存覆盖对应对话（缓存更新更及时）
-          for(var i=0;i<convs.length;i++){
-            try{
-              var cached = await idbGet('conv_'+convs[i].id);
-              if(cached && cached.msgs && cached.msgs.length >= ((convs[i].msgs||[]).length)){
-                convs[i] = cached;
-              }
-            }catch(e){}
-            if(i>6) break;   // 只校对最近几个，避免拖慢启动
-          }
+          // 合并：同 id 取消息更多的那个；新 id 追加。绝不丢弃任何一边
+          var map={};
+          data.forEach(function(c){ if(c&&c.id) map[c.id]=c; });
+          convs.forEach(function(c){
+            if(!c||!c.id) return;
+            var o=map[c.id];
+            if(!o){ map[c.id]=c; return; }
+            if((c.msgs||[]).length >= (o.msgs||[]).length) map[c.id]=c;
+          });
+          convs = Object.keys(map).map(function(k){ return map[k]; })
+                    .sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
           renderConvs(); renderChat(); updateHeadTitle();
         }
         _storeReady = true;
+        _loaded = true;
+        try{ idbSet('convs', convs).catch(function(){}); }catch(e){}
       } else if(convs.length){
         await idbSet('convs', convs);
         var check = await idbGet('convs');
@@ -3349,11 +3351,14 @@ applyLang();
       } else {
         // 全新用户：没有历史，也没有 localStorage 数据
         window.__storeEmptyConfirmed = true;
+        _loaded = true;
+        try{ idbSet('convs', convs).catch(function(){}); }catch(e){}
       }
       _storeReady = true;
       _storeState.idb='可用'; _storeState.ready=_storeReady; _storeState.count=convs.length;
     }catch(e){
       _storeReady = false;
+      _loaded = true;
       _storeState.idb='不可用'; _storeState.err=String(e&&e.message||e).slice(0,60);
       setTimeout(function(){ toast('本地存储读取失败，本次聊天不会被保存'); }, 800);
     }
