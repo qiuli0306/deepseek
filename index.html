@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 15:31';
+var APP_VERSION='2026-11-18 19:47';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -747,10 +747,49 @@ if(!S.uiMigrated){ S.chatStyle='command'; S.waifu=false; S.showAvatar=false; S.u
 
 try{ recentImgs=JSON.parse(localStorage.getItem('dsclone_recent')||'[]')||[]; }catch(e){ recentImgs=[]; }
 
+/* ============ IndexedDB 存储（大容量，替代 localStorage 存对话） ============ */
+var _idbDB = null, _idbReady = false;
+function idbOpenDB(){
+  return new Promise(function(res, rej){
+    if(_idbDB) return res(_idbDB);
+    if(!window.indexedDB) return rej(new Error('no idb'));
+    var rq = indexedDB.open('dsclone_store', 1);
+    rq.onupgradeneeded = function(){
+      var db = rq.result;
+      if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+    };
+    rq.onsuccess = function(){ _idbDB = rq.result; _idbReady = true; res(_idbDB); };
+    rq.onerror = function(){ rej(rq.error); };
+  });
+}
+function idbSet(key, val){
+  return idbOpenDB().then(function(db){
+    return new Promise(function(res, rej){
+      var tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(val, key);
+      tx.oncomplete = function(){ res(true); };
+      tx.onerror = function(){ rej(tx.error); };
+    });
+  });
+}
+function idbGet(key){
+  return idbOpenDB().then(function(db){
+    return new Promise(function(res, rej){
+      var tx = db.transaction('kv', 'readonly');
+      var rq = tx.objectStore('kv').get(key);
+      rq.onsuccess = function(){ res(rq.result); };
+      rq.onerror = function(){ rej(rq.error); };
+    });
+  });
+}
+function idbHas(key){
+  return idbGet(key).then(function(v){ return v !== undefined && v !== null; });
+}
+
 function saveS(){ localStorage.setItem(SK, JSON.stringify(S)); }
 function saveC(){
-  try{ localStorage.setItem(CK, JSON.stringify(convs)); }
-  catch(e){ toast('本地存储已满，建议清理旧对话'); }
+  try{ idbSet('convs', convs).catch(function(){ toast('保存失败，请检查存储空间'); }); }
+  catch(e){ toast('保存失败：'+(e.message||'')); }
 }
 function toast(m){
   var el=$('#toast'); el.textContent=m; el.classList.add('on');
@@ -2612,7 +2651,7 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='mExport'){ exportAll(); }
   if(e.target.id==='mClear'){
     if(!confirm('清空全部对话？')) return;
-    convs=[]; curId=null; saveC(); renderConvs(); renderChat(); updateHeadTitle(); toast(t('cleared'));
+    convs=[]; curId=null; saveC(); try{ localStorage.removeItem(CK); }catch(e){} renderConvs(); renderChat(); updateHeadTitle(); toast(t('cleared'));
   }
   if(e.target.id==='sbLogin'||e.target.id==='sbSignup'){
     var em=($('#sbEmail')||{}).value||'', pw=($('#sbPass')||{}).value||'';
@@ -3157,6 +3196,28 @@ window.addEventListener('popstate', function(){
 /* ================= 启动 ================= */
 applyTheme();
 applyLang();
+// ==== 迁移 / 载入 IDB 数据 ====
+(function bootStorage(){
+  (async function(){
+    try{
+      var has = await idbHas('convs');
+      if(has){
+        var data = await idbGet('convs');
+        if(Array.isArray(data) && data.length){
+          convs = data;
+          renderConvs(); renderChat(); updateHeadTitle();
+        }
+      } else if(convs.length){
+        await idbSet('convs', convs);
+        var check = await idbGet('convs');
+        if(Array.isArray(check) && check.length === convs.length){
+          try{ localStorage.removeItem(CK); localStorage.removeItem('dsclone_convs_v3'); localStorage.removeItem('dsclone_convs_v2'); }catch(e){}
+        }
+      }
+    }catch(e){ /* IDB 不可用时继续用内存，不影响聊天 */ }
+  })();
+})();
+
 renderConvs();
 renderChat();
 updateHeadTitle();
