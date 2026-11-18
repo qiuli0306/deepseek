@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 22:11';
+var APP_VERSION='2026-11-18 22:50';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1413,7 +1413,7 @@ function isLastMsg(c,m){ return c.msgs[c.msgs.length-1]===m; }
 var autoScroll=true;
 function scrollBottom(force){
   var el=$('#scroll');
-  if(el && (force||autoScroll)) el.scrollTop=el.scrollHeight+300;
+  if(el && (force||autoScroll)) el.scrollTop=el.scrollHeight;
 }
 $('#scroll').addEventListener('scroll',function(){
   var el=this; autoScroll=(el.scrollHeight-el.scrollTop-el.clientHeight)<100;
@@ -1844,7 +1844,7 @@ async function send(text, retryIndex, skipPush){
       if(bd){
         var shown=(ai.content||'').slice(0, ai._typeLen||0);
         if(!shown){ bd.innerHTML='<span class="dots"><i></i><i></i><i></i></span>'; }
-        else { bd.innerHTML=md(shown); try{ renderMath(node); }catch(e){} }
+        else { bd.innerHTML=md(shown); }
       }
       scrollBottom();
       // 生成过程中每 2 秒落一次盘，防止切走丢内容
@@ -1912,9 +1912,6 @@ $('#input').addEventListener('input',function(){
   this.style.height='auto';
   this.style.height=Math.min(this.scrollHeight,120)+'px';
   updateSendIcon();
-});
-$('#input').addEventListener('keydown',function(e){
-  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){ e.preventDefault(); doSend(); }
 });
 function doSend(){
   var el=$('#input'), txt=el.value;
