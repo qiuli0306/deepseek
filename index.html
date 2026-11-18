@@ -706,7 +706,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 11:44';
+var APP_VERSION='2026-11-18 11:53';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2943,6 +2943,10 @@ async function initCustomFonts(){
 var APK_URL = 'https://qiuli0306.github.io/deepseek/deepseek.apk';
 var VER_URL = 'https://qiuli0306.github.io/deepseek/version.json';
 var latestVer = null;
+function apkVersionNow(){
+  try{ return (window.DSApp && window.DSApp.apkVersion) ? String(window.DSApp.apkVersion()||'') : ''; }
+  catch(e){ return ''; }
+}
 
 var _updLog = [], _needApk = false;
 
@@ -3000,6 +3004,21 @@ function checkUpdate(manual){
       var dot = $('#updDot');
       var showDot = pending.length && latestVer !== seen;
       if(dot) dot.style.display = showDot ? 'block' : 'none';
+
+      // 原生包是否落后（需要重新安装）
+      var needApkReinstall = false;
+      try{
+        var curApk = apkVersionNow();
+        var latestApk = (j && j.apkVer) || '';
+        if(curApk && latestApk && curApk !== latestApk) needApkReinstall = true;
+      }catch(e){}
+
+      if(needApkReinstall){
+        var tips = pending.slice(0);
+        tips.unshift({ver:'需要安装新版本 '+((j&&j.apkVer)||''), notes:['本次更新包含界面/系统层面的改动，重新安装后才会生效。','覆盖安装不会丢失聊天记录和设置。']});
+        showUpd(tips, true, '需要安装新版本');
+        return;
+      }
 
       if(!pageIsLatest){
         // 页面是旧的：要么缓存，要么原生包旧 → 提示装 APK
