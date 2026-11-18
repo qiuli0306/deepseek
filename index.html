@@ -2572,8 +2572,8 @@ function checkUpdate(manual){
       var hasNew = !!latestVer && latestVer !== APP_VERSION;
       var dot = $('#updDot');
       if(dot) dot.style.display = (hasNew && latestVer !== seen) ? 'block' : 'none';
-      if(manual || (hasNew && latestVer !== seen)) showUpd(latestVer);
-      else if(manual) toast('已是最新版本');
+      if(hasNew && (manual || latestVer !== seen)) showUpd(latestVer);
+      else if(manual) toast('已是最新版本  '+APP_VERSION);
     })
     .catch(function(){ if(manual) toast('检查更新失败，请稍后再试'); });
 }
