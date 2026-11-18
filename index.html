@@ -41,9 +41,9 @@ body.menu-open .mdwrap{-webkit-touch-callout:none;user-select:none}
 #msgs .pickable,#msgs .pickable *{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 #msgs textarea,#msgs input{-webkit-user-select:text;user-select:text}
 #msgs .pickable{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
-body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62;font-weight:450;font-family:system-ui,-apple-system,'HarmonyOS Sans','MiSans','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Hiragino Sans","Helvetica Neue",sans-serif;
-  -webkit-font-smoothing:antialiased}
+body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62;font-weight:450;
+  font-family:var(--font-main,system-ui,-apple-system,'HarmonyOS Sans','MiSans','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;font-size:inherit}
 input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .app{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;
@@ -704,14 +704,14 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 11:13';
+var APP_VERSION='2026-11-18 11:23';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
   fastModel:'deepseek-flash', expertModel:'deepseek-v4-pro', temp:'1.0',
   theme:'light', lang:'zh-CN', fontScale:'1', webSearch:false, think:false,
   chatStyle:'command', showAvatar:false, wideBubble:false, glass:false, waifu:false, autoTitle:true,
-  userColor:'', aiColor:'', chatBg:'', bgImage:'', userAvatar:'', aiAvatar:'', model:'deepseek-flash', provider:'deepseek', userName:'我', aiName:'',
+  userColor:'', aiColor:'', chatBg:'', bgImage:'', fontFamily:'system', userAvatar:'', aiAvatar:'', model:'deepseek-flash', provider:'deepseek', userName:'我', aiName:'',
   tts:{ prov:'openai', base:'https://api.openai.com/v1', key:'', group:'', model:'tts-1', voice:'alloy' },
   voiceStyle:0, autoplay:false, welcomed:false
 };
@@ -1931,6 +1931,27 @@ document.addEventListener('click',async function(e){
   if(fse){ S.fontScale=fse.dataset.fs; saveS(); applyTheme(); renderSettings(); return; }
 
   var cs=e.target.closest('[data-chatstyle]');
+  var fb=e.target.closest('[data-font]');
+  if(fb){ S.fontFamily=fb.dataset.font; saveS(); applyFont(); refreshSub(); return; }
+  if(e.target.closest('#fontImport')){ pickFontFile(); return; }
+  var fd=e.target.closest('[data-fontdel]');
+  if(fd){
+    var dn=fd.dataset.fontdel;
+    idbDel(dn).then(function(){
+      if(S.fontFamily==='custom:'+dn){ S.fontFamily='system'; saveS(); applyFont(); }
+      refreshSub(); toast('已删除字体 '+dn);
+    });
+    return;
+  }
+  var fu=e.target.closest('[data-fontuse]');
+  if(fu){
+    var un=fu.dataset.fontuse;
+    registerCustomFont(un).then(function(ok){
+      if(!ok){ toast('字体加载失败'); return; }
+      S.fontFamily='custom:'+un; saveS(); applyFont(); refreshSub();
+    });
+    return;
+  }
   if(cs){ S.chatStyle=cs.dataset.chatstyle; saveS(); applyTheme(); renderChat(); renderSubTheme(); return; }
 
   var uc=e.target.closest('[data-usercolor]');
@@ -2334,6 +2355,16 @@ function subThemeSub(){
 
 
   '</div>'+
+  '<div class="sec">字体</div>'+
+  '<div class="group">'+
+    '<div class="row"><span class="k">当前字体</span><span class="v">'+(S.fontFamily&&S.fontFamily.indexOf('custom:')===0?S.fontFamily.slice(7):((FONTS[S.fontFamily]||FONTS.system).name))+'</span></div>'+
+    Object.keys(FONTS).map(function(k){
+      var on = (S.fontFamily||'system')===k;
+      return '<div class="row tap" data-font="'+k+'"><span class="k" style="'+(on?'color:var(--blue-txt);font-weight:500':'')+'">'+FONTS[k].name+(on?' ✓':'')+'</span><span class="k" style="font-family:'+FONTS[k].css+';font-size:18px;color:var(--fg3)">Aa 字</span></div>';
+    }).join('')+
+    '<div class="row tap" id="fontImport"><span class="k" style="color:var(--blue-txt)">导入字体文件</span><span class="v">ttf / otf</span></div>'+
+    '<div id="fontCustomList"></div>'+
+  '</div>'+
   '<div class="sec">额外信息注入</div>'+
   '<div class="group">'+
     '<div class="row"><span class="k">注入时间<div style="font-size:12px;color:var(--fg3);margin-top:2px">把当前日期、星期、时段告诉 AI</div></span><div class="sw '+((S.injectTime!==false)?'on':'')+'" data-toggle="injectTime"><i></i></div></div>'+
@@ -2371,7 +2402,7 @@ function subThemeSub(){
   '<div style="height:8px"></div><button class="btn" id="bgPick">'+t('bgPick')+'</button>'+
   '<div style="height:8px"></div><button class="btn" id="bgReset">'+t('bgReset')+'</button><div style="height:30px"></div>';
 }
-function renderSubTheme(){ if($('#subTitle').textContent===t('themeSub')) $('#subScroll').innerHTML=subThemeSub(); }
+function renderSubTheme(){ if($('#subTitle').textContent===t('themeSub')){ $('#subScroll').innerHTML=subThemeSub(); renderCustomFonts(); } }
 function refreshSub(){
   var tt=$('#subTitle').textContent;
   if(tt===t('themeSub')) $('#subScroll').innerHTML=subThemeSub();
@@ -2683,6 +2714,7 @@ function applyTheme(){
   root.style.setProperty('--bubble-user', toRgba(S.userColor||(th==='light'?'#dfe8ff':'#2d2d2d'), alpha));
   root.style.setProperty('--bubble-ai', toRgba(S.aiColor||(th==='light'?'#ffffff':'#232323'), alpha));
   root.style.setProperty('--bubble-blur', (S.bubbleBlur||0)+'px');
+  applyFont();
   if(!$('#bgLayer')){
     var bl=document.createElement('div'); bl.id='bgLayer';
     var ar=$('#appRoot'); if(ar) ar.insertBefore(bl, ar.firstChild);
@@ -2747,6 +2779,125 @@ function firstRun(){
 }
 $('#dlgOk').addEventListener('click',function(){ $('#dlgMask').classList.remove('on'); });
 $('#dlgMask').addEventListener('click',function(e){ if(e.target.id==='dlgMask') this.classList.remove('on'); });
+
+/* ================= 字体 ================= */
+var FONTS = {
+  system: { name:'系统默认', css:"system-ui,-apple-system,'HarmonyOS Sans','MiSans','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif" },
+  hei:    { name:'黑体',    css:"'Noto Sans SC','Source Han Sans SC','PingFang SC','Microsoft YaHei',sans-serif" },
+  song:   { name:'宋体',    css:"'Songti SC','Noto Serif CJK SC','Source Han Serif SC','SimSun',serif" },
+  kai:    { name:'楷体',    css:"'Kaiti SC','STKaiti','KaiTi','Noto Serif CJK SC',serif" },
+  round:  { name:'圆体',    css:"'Yuanti SC','YouYuan','Quicksand','PingFang SC',sans-serif" },
+  serifEn:{ name:'英文衬线', css:"Georgia,'Times New Roman',serif" }
+};
+
+function idbOpen(){
+  return new Promise(function(res, rej){
+    if(!window.indexedDB) return rej(new Error('no idb'));
+    var r=indexedDB.open('dsclone-fonts',1);
+    r.onupgradeneeded=function(){ r.result.createObjectStore('fonts'); };
+    r.onsuccess=function(){ res(r.result); };
+    r.onerror=function(){ rej(r.error); };
+  });
+}
+function idbPut(name, buf){
+  return idbOpen().then(function(db){
+    return new Promise(function(res, rej){
+      var tx=db.transaction('fonts','readwrite');
+      tx.objectStore('fonts').put(buf, name);
+      tx.oncomplete=function(){ res(true); };
+      tx.onerror=function(){ rej(tx.error); };
+    });
+  });
+}
+function idbGet(name){
+  return idbOpen().then(function(db){
+    return new Promise(function(res, rej){
+      var tx=db.transaction('fonts','readonly');
+      var rq=tx.objectStore('fonts').get(name);
+      rq.onsuccess=function(){ res(rq.result); };
+      rq.onerror=function(){ rej(rq.error); };
+    });
+  });
+}
+function idbDel(name){
+  return idbOpen().then(function(db){
+    return new Promise(function(res){
+      var tx=db.transaction('fonts','readwrite');
+      tx.objectStore('fonts').delete(name);
+      tx.oncomplete=function(){ res(true); };
+      tx.onerror=function(){ res(false); };
+    });
+  });
+}
+function idbKeys(){
+  return idbOpen().then(function(db){
+    return new Promise(function(res){
+      var tx=db.transaction('fonts','readonly');
+      var rq=tx.objectStore('fonts').getAllKeys();
+      rq.onsuccess=function(){ res(rq.result||[]); };
+      rq.onerror=function(){ res([]); };
+    });
+  });
+}
+
+function fontCssOf(key){
+  if(!key) return FONTS.system.css;
+  if(key.indexOf('custom:')===0){
+    var n=key.slice(7);
+    return '"'+n+'",' + FONTS.system.css;
+  }
+  return (FONTS[key]||FONTS.system).css;
+}
+function applyFont(){
+  document.documentElement.style.setProperty('--font-main', fontCssOf(S.fontFamily));
+}
+async function registerCustomFont(name){
+  try{
+    var buf = await idbGet(name);
+    if(!buf) return false;
+    var ff = new FontFace(name, buf);
+    await ff.load();
+    document.fonts.add(ff);
+    return true;
+  }catch(e){ return false; }
+}
+function pickFontFile(){
+  var inp=document.createElement('input');
+  inp.type='file'; inp.accept='.ttf,.otf,.woff,.woff2,font/*';
+  inp.onchange=async function(){
+    var f=inp.files&&inp.files[0]; if(!f) return;
+    if(f.size > 8*1024*1024){ toast('字体文件超过 8MB，换个小一点的'); return; }
+    var name=f.name.replace(/\.[^.]+$/,'');
+    try{
+      var buf=await f.arrayBuffer();
+      await idbPut(name, buf);
+      var ok=await registerCustomFont(name);
+      if(!ok) throw new Error('load fail');
+      S.fontFamily='custom:'+name; saveS(); applyFont(); refreshSub();
+      toast('已导入并启用：'+name);
+    }catch(e){ toast('导入失败：'+((e&&e.message)||'')); }
+  };
+  inp.click();
+}
+
+async function renderCustomFonts(){
+  var box=$('#fontCustomList'); if(!box) return;
+  var keys=await idbKeys();
+  if(!keys.length){ box.innerHTML=''; return; }
+  box.innerHTML = keys.map(function(k){
+    var on = S.fontFamily==='custom:'+k;
+    return '<div class="row"><span class="k tap" data-fontuse="'+esc(k)+'" style="'+(on?'color:var(--blue-txt);font-weight:500':'')+'">'+esc(k)+(on?' ✓':'')+'</span>'+
+           '<span class="v tap" data-fontdel="'+esc(k)+'" style="color:#e5484d">删除</span></div>';
+  }).join('');
+}
+
+async function initCustomFonts(){
+  if(!S.fontFamily || S.fontFamily.indexOf('custom:')!==0) return;
+  var n = S.fontFamily.slice(7);
+  var ok = await registerCustomFont(n);
+  if(!ok){ S.fontFamily='system'; saveS(); toast('自定义字体加载失败，已切回系统默认'); }
+  applyFont();
+}
 
 /* ================= 版本检查 ================= */
 var APK_URL = 'https://qiuli0306.github.io/deepseek/deepseek.apk';
@@ -2818,6 +2969,7 @@ setTimeout(firstRun,400);
 </script>
 <script>
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(function(){}); }
+try{ initCustomFonts(); }catch(e){}
 </script>
 </body>
 </html>
