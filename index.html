@@ -479,6 +479,11 @@ body[data-theme="light"] .toast{background:#222c}
     </div>
     <div class="convs" id="convs"></div>
     <div class="drawer-foot">
+      <button class="fitem" id="dUpdate" style="position:relative">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+        <span>检查更新</span>
+        <i id="updDot" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#ff4d4f"></i>
+      </button>
       <button class="fitem" id="dSettings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
         <span id="dSetTxt">设置</span>
@@ -537,6 +542,17 @@ body[data-theme="light"] .toast{background:#222c}
     <button data-cm="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/></svg><span id="cmPinText">置顶</span></button>
     <button data-cm="multi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="1.6"/><path d="M12 7h8"/><circle cx="7" cy="16" r="1.6"/><path d="M12 16h8"/></svg><span>多选</span></button>
     <button data-cm="del" class="danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg><span>删除</span></button>
+  </div>
+
+  <div class="dialog-mask" id="updMask">
+    <div class="dialog">
+      <button id="updX" style="position:absolute;right:14px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--card2);color:var(--fg2);font-size:15px;line-height:26px;text-align:center">✕</button>
+      <h3 id="updTitle">发现新版本</h3>
+      <p id="updText"></p>
+      <button class="btn primary" id="updGo">下载安装包</button>
+      <div style="height:8px"></div>
+      <button class="btn" id="updLater">稍后再说</button>
+    </div>
   </div>
 
   <div class="dialog-mask" id="dlgMask">
@@ -2534,6 +2550,49 @@ function firstRun(){
 }
 $('#dlgOk').addEventListener('click',function(){ $('#dlgMask').classList.remove('on'); });
 $('#dlgMask').addEventListener('click',function(e){ if(e.target.id==='dlgMask') this.classList.remove('on'); });
+
+/* ================= 版本检查 ================= */
+var APK_URL = 'https://qiuli0306.github.io/deepseek/deepseek.apk';
+var VER_URL = 'https://qiuli0306.github.io/deepseek/version.json';
+var latestVer = null;
+
+function showUpd(ver){
+  $('#updTitle').textContent = '发现新版本';
+  $('#updText').innerHTML = '当前版本：' + APP_VERSION + '<br>最新版本：' + (ver || '未知') +
+    '<br><br>下载后覆盖安装即可，聊天记录和设置都会保留。';
+  $('#updMask').classList.add('on');
+}
+
+function checkUpdate(manual){
+  fetch(VER_URL + '?t=' + Date.now(), {cache:'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      latestVer = (j && j.ver) || null;
+      var seen = localStorage.getItem('dsclone_seen_ver') || '';
+      var hasNew = !!latestVer && latestVer !== APP_VERSION;
+      var dot = $('#updDot');
+      if(dot) dot.style.display = (hasNew && latestVer !== seen) ? 'block' : 'none';
+      if(manual || (hasNew && latestVer !== seen)) showUpd(latestVer);
+      else if(manual) toast('已是最新版本');
+    })
+    .catch(function(){ if(manual) toast('检查更新失败，请稍后再试'); });
+}
+
+$('#dUpdate').addEventListener('click', function(){ checkUpdate(true); });
+$('#updGo').addEventListener('click', function(){
+  localStorage.setItem('dsclone_seen_ver', latestVer || APP_VERSION);
+  $('#updMask').classList.remove('on');
+  try{ window.open(APK_URL, '_blank'); }catch(e){ location.href = APK_URL; }
+});
+$('#updLater').addEventListener('click', function(){
+  localStorage.setItem('dsclone_seen_ver', latestVer || APP_VERSION);
+  $('#updMask').classList.remove('on');
+});
+$('#updX').addEventListener('click', function(){
+  localStorage.setItem('dsclone_seen_ver', latestVer || APP_VERSION);
+  $('#updMask').classList.remove('on');
+});
+setTimeout(function(){ checkUpdate(false); }, 2500);
 
 /* ================= 返回键层级 ================= */
 window.addEventListener('popstate', function(){
