@@ -717,7 +717,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 15:17';
+var APP_VERSION='2026-11-18 15:20';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2904,6 +2904,24 @@ function loadKatex(cb){
   tryNext();
 }
 
+function sanitizeTex(tex){
+  t = String(tex||'');
+  // KaTeX 不支持的常见宏 → 降级替换
+  t = t.replace(/\\scalebox\s*\{[^{}]*\}/g, '\\small');
+  t = t.replace(/\\resizebox\s*\{[^{}]*\}\s*\{[^{}]*\}/g, '');
+  t = t.replace(/\\hfill/g, '\\hspace{1em}');
+  t = t.replace(/\\vspace\s*\{[^{}]*\}/g, '');
+  t = t.replace(/\\vfill/g, '');
+  t = t.replace(/\\fontsize\s*\{[^{}]*\}\s*\{[^{}]*\}/g, '');
+  t = t.replace(/\\selectfont/g, '');
+  t = t.replace(/\\noindent/g, '');
+  t = t.replace(/\\mbox/g, '\\text');
+  t = t.replace(/\\textwidth/g, '\\linewidth');
+  t = t.replace(/\\Bigg?[lr]?\b/g, '');
+  t = t.replace(/\\displaystyle/g, '');
+  return t;
+}
+
 function renderMath(scope){
   var root = scope || document;
   var nodes = root.querySelectorAll('.math-block:not([data-done])');
@@ -2913,7 +2931,7 @@ function renderMath(scope){
       if(el.dataset.done) return;
       el.dataset.done='1';
       if(!ok || !window.katex) return;
-      var tex = el.getAttribute('data-tex') || '';
+      var tex = sanitizeTex(el.getAttribute('data-tex') || '');
       try{
         katex.render(tex, el, {displayMode:true, throwOnError:true, strict:false});
         el.classList.add('math-ok');
