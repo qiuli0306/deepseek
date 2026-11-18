@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 21:59';
+var APP_VERSION='2026-11-18 22:03';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -782,6 +782,24 @@ function idbGet(key){
       rq.onsuccess = function(){ res(rq.result); };
       rq.onerror = function(){ rej(rq.error); };
     });
+  });
+}
+function idbAllKeys(){
+  return idbOpenDB().then(function(db){
+    return new Promise(function(res){
+      var tx = db.transaction('kv','readonly');
+      var rq = tx.objectStore('kv').getAllKeys();
+      rq.onsuccess = function(){ res(rq.result||[]); };
+      rq.onerror = function(){ res([]); };
+    });
+  });
+}
+function loadConvCaches(){
+  return idbAllKeys().then(function(keys){
+    var ks = keys.filter(function(k){ return String(k).indexOf('conv_')===0; });
+    if(!ks.length) return [];
+    return Promise.all(ks.map(function(k){ return idbGet(k).catch(function(){ return null; }); }))
+      .then(function(arr){ return arr.filter(function(v){ return v && v.id && v.msgs; }); });
   });
 }
 function idbHas(key){
@@ -3322,40 +3340,40 @@ applyLang();
 (function bootStorage(){
   (async function(){
     try{
-      var has = await idbHas('convs');
-      if(has){
-        var data = await idbGet('convs');
-        if(Array.isArray(data) && data.length){
-          // 合并：同 id 取消息更多的那个；新 id 追加。绝不丢弃任何一边
-          var map={};
-          data.forEach(function(c){ if(c&&c.id) map[c.id]=c; });
-          convs.forEach(function(c){
-            if(!c||!c.id) return;
-            var o=map[c.id];
-            if(!o){ map[c.id]=c; return; }
-            if((c.msgs||[]).length >= (o.msgs||[]).length) map[c.id]=c;
-          });
-          convs = Object.keys(map).map(function(k){ return map[k]; })
-                    .sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
-          renderConvs(); renderChat(); updateHeadTitle();
-        }
-        _storeReady = true;
-        _loaded = true;
-        try{ idbSet('convs', convs).catch(function(){}); }catch(e){}
+      var mainData = await idbGet('convs').catch(function(){ return null; });
+      var cached = await loadConvCaches().catch(function(){ return []; });
+      var all = [];
+      if(Array.isArray(mainData)) all = all.concat(mainData);
+      if(Array.isArray(cached)) all = all.concat(cached);
+
+      if(all.length){
+        var map={};
+        all.forEach(function(c){
+          if(!c||!c.id) return;
+          var o=map[c.id];
+          if(!o || ((c.msgs||[]).length >= (o.msgs||[]).length)) map[c.id]=c;
+        });
+        convs.forEach(function(c){
+          if(!c||!c.id) return;
+          var o=map[c.id];
+          if(!o || ((c.msgs||[]).length >= (o.msgs||[]).length)) map[c.id]=c;
+        });
+        convs = Object.keys(map).map(function(k){ return map[k]; })
+                  .sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+        renderConvs(); renderChat(); updateHeadTitle();
+        try{ localStorage.removeItem(CK); }catch(e){}
       } else if(convs.length){
+        // 首次从 localStorage 迁移
         await idbSet('convs', convs);
-        var check = await idbGet('convs');
-        if(Array.isArray(check) && check.length === convs.length){
-          try{ localStorage.removeItem(CK); localStorage.removeItem('dsclone_convs_v3'); localStorage.removeItem('dsclone_convs_v2'); }catch(e){}
-        }
+        try{ localStorage.removeItem(CK); localStorage.removeItem('dsclone_convs_v3'); localStorage.removeItem('dsclone_convs_v2'); }catch(e){}
       } else {
-        // 全新用户：没有历史，也没有 localStorage 数据
         window.__storeEmptyConfirmed = true;
-        _loaded = true;
-        try{ idbSet('convs', convs).catch(function(){}); }catch(e){}
       }
+
       _storeReady = true;
-      _storeState.idb='可用'; _storeState.ready=_storeReady; _storeState.count=convs.length;
+      _loaded = true;
+      _storeState.idb='可用'; _storeState.ready=true; _storeState.count=convs.length;
+      try{ idbSet('convs', convs).catch(function(){}); }catch(e){}
     }catch(e){
       _storeReady = false;
       _loaded = true;
