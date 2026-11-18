@@ -579,7 +579,7 @@ var L = {
   avatarSec:'头像', myAvatar:'我的头像', aiAvatar:'AI 头像', avatarReset:'恢复默认头像',
   waifu:'Waifu 模式', waifuD:'启用后，AI 的回复将按标点分割逐句发送，营造更自然的对话体验。',
   apiKey:'API Key', baseUrl:'Base URL', fastModel:'快速模式模型', expertModel:'深度思考模型', temp:'温度',
-  webSearch:'联网搜索', webSearchD:'需自行配置搜索代理', dataExport:'导出全部对话', dataClear:'清空全部对话', count:'会话数量',
+  webSearch:'联网搜索', webSearchD:'使用 DeepSeek 官方接口时直接可用；接其他服务商需自备搜索能力', dataExport:'导出全部对话', dataClear:'清空全部对话', count:'会话数量',
   ttsApi:'语音接口地址', ttsKey:'语音 API Key', ttsGroup:'GroupId（MiniMax）', ttsModel:'语音模型', ttsVoice:'音色 ID',
   ttsTest:'试听', ttsProv:'接口格式', save:'已保存', saveBtn:'保存', copied:'已复制', copyMsg:'复制', speak:'朗读', retry:'重新生成',
   stop:'已停止生成', notKey:'请先在设置中填写 API Key', copiedFail:'复制失败', cleared:'已清空', exported:'已导出',
@@ -1505,6 +1505,13 @@ async function send(text, retryIndex){
   saveC(); renderConvs(); renderChat(); updateHeadTitle(); setBusy(true); autoScroll=true;
 
   var body={model:model,messages:buildMessages(c),stream:true};
+  // 联网搜索：DeepSeek 官方内置工具（服务端执行）
+  if(S.webSearch && /api\.deepseek\.com/i.test(S.baseUrl||'')){
+    body.tools = [
+      {type:'builtin_function', function:{name:'deepseek_web_search'}},
+      {type:'builtin_function', function:{name:'deepseek_read_url'}}
+    ];
+  }
   var tp=parseFloat(S.temp);
   if(!/reasoner/i.test(model) && !isNaN(tp)) body.temperature=tp;
 
@@ -1683,7 +1690,7 @@ $('#tgThink').addEventListener('click',function(){
 $('#tgSearch').addEventListener('click',function(){
   S.webSearch=!S.webSearch; saveS();
   this.classList.toggle('on',S.webSearch);
-  toast(S.webSearch?'智能搜索已开启（需自行配置搜索代理）':'智能搜索已关闭');
+  toast(S.webSearch?'智能搜索已开启（DeepSeek 官方接口可用）':'智能搜索已关闭');
 });
 
 /* ================= 点击委托 ================= */
@@ -1806,7 +1813,7 @@ function openMsgMenu(idx){
 
 /* ================= 抽屉 ================= */
 function openDrawer(){
-  renderConvs(); $('#drawer').classList.add('on'); $('#mask').classList.add('on');
+  renderConvs(); $('#drawer').classList.add('on'); $('#mask').classList.add('on'); pushLayer('drawer');
 }
 function closeDrawer(){ $('#drawer').classList.remove('on'); $('#mask').classList.remove('on'); }
 $('#btnMenu').addEventListener('click',openDrawer);
@@ -1954,7 +1961,8 @@ var VOICES=[
 function voiceOf(){ return VOICES[S.voiceStyle||0]||VOICES[0]; }
 
 
-function openSettings(){ renderSettings(); $('#pageMain').classList.add('on'); }
+function pushLayer(n){ try{ history.pushState({layer:n},''); }catch(e){} }
+function openSettings(){ renderSettings(); $('#pageMain').classList.add('on'); pushLayer('settings'); }
 $('#dSettings').addEventListener('click',function(){ closeDrawer(); openSettings(); });
 $('#pBack').addEventListener('click',function(){ $('#pageMain').classList.remove('on'); });
 function renderSettings(){
@@ -1999,6 +2007,7 @@ function renderSettings(){
 function openSub(key){
   var box=$('#subScroll');
   $('#pageSub').classList.add('on');
+  pushLayer('sub');
   if(key==='lang'){ $('#subTitle').textContent=t('language'); box.innerHTML=subLang(); }
   else if(key==='theme'){ $('#subTitle').textContent=t('appearance'); box.innerHTML=subTheme(); }
   else if(key==='font'){ $('#subTitle').textContent=t('fontSize'); box.innerHTML=subFont(); }
@@ -2164,8 +2173,7 @@ function subMore(){
     '<div class="row"><span class="k">'+t('temp')+'</span><input type="text" id="mTemp" value="'+esc(S.temp)+'"></div>'+
   '</div>'+
   '<div class="hint">默认 deepseek-flash。想换模型直接改这里（换服务商请同时改 Base URL）。「深度思考」开关只决定是否展示思考链，模型本身支持时才会出现。</div>'+
-  '<div class="sec">'+t('webSearch')+'</div>'+
-  '<div class="group"><div class="row"><span class="k">'+t('webSearch')+'<div style="font-size:12px;color:var(--fg3);margin-top:2px">'+t('webSearchD')+'</div></span><div class="sw '+(S.webSearch?'on':'')+'" data-toggle="webSearch"><i></i></div></div></div>'+
+  '<div class="hint" style="padding-top:4px">联网搜索由输入框上方的「智能搜索」开关控制，无需在此设置。</div>'+
   '<div class="sec">'+t('waifu')+'</div>'+
   '<div class="group">'+
     '<div class="row"><span class="k">'+t('waifu')+'（仅对话框风格生效）<div style="font-size:12px;color:var(--fg3);margin-top:2px">'+t('waifuD')+'</div></span><div class="sw '+(S.waifu?'on':'')+'" data-toggle="waifu"><i></i></div></div>'+
@@ -2463,6 +2471,15 @@ function firstRun(){
 }
 $('#dlgOk').addEventListener('click',function(){ $('#dlgMask').classList.remove('on'); });
 $('#dlgMask').addEventListener('click',function(e){ if(e.target.id==='dlgMask') this.classList.remove('on'); });
+
+/* ================= 返回键层级 ================= */
+window.addEventListener('popstate', function(){
+  var sub=$('#pageSub'), main=$('#pageMain'), dr=$('#drawer');
+  if(sub && sub.classList.contains('on')){ syncInputs(); sub.classList.remove('on'); renderSettings(); return; }
+  if(main && main.classList.contains('on')){ main.classList.remove('on'); return; }
+  if(dr && dr.classList.contains('on')){ closeDrawer(); return; }
+  // 都在最底层：交还给系统（退出 App）
+});
 
 /* ================= 启动 ================= */
 applyTheme();
