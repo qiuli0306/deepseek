@@ -546,6 +546,13 @@ body[data-theme="light"] .toast{background:#222c}
   <input type="file" id="fileDoc" multiple style="display:none">
 
   <div class="convmenu-mask" id="convMask"></div>
+  <div id="selBar" style="display:none;position:fixed;left:12px;right:12px;bottom:calc(84px + var(--safe-b));z-index:97;
+       background:var(--card);border-radius:14px;box-shadow:0 8px 30px #0002,0 0 0 1px var(--line);
+       padding:8px;gap:8px;align-items:center">
+    <button id="selCopy" class="btn primary" style="margin:0;padding:10px;flex:1;font-size:14px">复制选中</button>
+    <button id="selAll" class="btn" style="margin:0;padding:10px;flex:1;font-size:14px">全选</button>
+    <button id="selDone" class="btn" style="margin:0;padding:10px;flex:1;font-size:14px">完成</button>
+  </div>
   <div class="convmenu" id="convMenu">
     <button data-cm="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>重命名</span></button>
     <button data-cm="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/></svg><span id="cmPinText">置顶</span></button>
@@ -695,7 +702,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 10:35';
+var APP_VERSION='2026-11-18 10:39';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -944,6 +951,7 @@ document.addEventListener('contextmenu',function(e){
   if(e.target.closest('#msgs') && !e.target.closest('.pickable')){ e.preventDefault(); }
 });
 $('#msgs').addEventListener('touchstart',function(e){
+  if(e.target.closest('.pickable')) return;
   var node=e.target.closest('.msg.ai'); if(!node) return;
   var t=e.touches&&e.touches[0];
   _lpX = t?t.clientX:0; _lpY = t?t.clientY:0;
@@ -1015,9 +1023,12 @@ function openAiMenu(idx, px, py){
     if(act==='copy') copyText(m.content||'');
     if(act==='select'){
       var node=document.querySelector('.msg.ai[data-i="'+idx+'"] .mdwrap');
-      if(node){ node.classList.add('pickable'); }
-      toast('现在可以拖动选择文字，再点复制');
-      menu.classList.remove('on'); $('#convMask').classList.remove('on');
+      if(node){
+        document.querySelectorAll('#msgs .pickable').forEach(function(el){ el.classList.remove('pickable'); });
+        node.classList.add('pickable');
+        var sb=$('#selBar'); sb.style.display='flex';
+        window.__selNode = node;
+      }
       return;
     }
     if(act==='copy'){
@@ -2012,6 +2023,25 @@ function openConvMenu(id){
   $('#convMenu').classList.add('on'); $('#convMask').classList.add('on');
 }
 function closeConvMenu(){ $('#convMenu').classList.remove('on'); $('#convMask').classList.remove('on'); }
+function exitSelectMode(){
+  document.querySelectorAll('#msgs .pickable').forEach(function(el){ el.classList.remove('pickable'); });
+  var sb=$('#selBar'); if(sb) sb.style.display='none';
+  try{ window.getSelection().removeAllRanges(); }catch(e){}
+}
+$('#selCopy').addEventListener('click', function(){
+  var sel=''; try{ sel=String(window.getSelection()||''); }catch(e){}
+  if(!sel){ toast('还没有选中内容，先按住文字拖动'); return; }
+  copyText(sel); exitSelectMode();
+});
+$('#selAll').addEventListener('click', function(){
+  var n=window.__selNode; if(!n) return;
+  try{
+    var rg=document.createRange(); rg.selectNodeContents(n);
+    var s2=window.getSelection(); s2.removeAllRanges(); s2.addRange(rg);
+  }catch(e){}
+});
+$('#selDone').addEventListener('click', exitSelectMode);
+
 $('#convMask').addEventListener('click',function(){
   closeConvMenu();
   var mm=document.getElementById('msgMenu'); if(mm) mm.classList.remove('on');
