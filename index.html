@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 20:38';
+var APP_VERSION='2026-11-18 21:00';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2623,12 +2623,20 @@ function subMore(){
   '</div>'+
   '<div class="sec">'+t('count')+'</div>'+
   '<div class="group"><div class="row"><span class="k">'+t('count')+'</span><span class="v">'+convs.length+'</span></div></div>'+
-  '<div style="height:12px"></div><button class="btn" id="mExport">'+t('dataExport')+'</button>'+
+  '<div style="height:12px"></div><button class="btn" id="mExportTxt">导出本对话为 TXT</button>'+
+  '<div style="height:8px"></div>'+
+  '<button class="btn" id="mExportTxtAll">导出全部为 TXT</button>'+
+  '<div style="height:8px"></div>'+
+  '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
   '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
   '<div style="height:8px"></div><button class="btn primary" id="mSave">'+t('saveBtn')+'</button><div style="height:30px"></div>';
 }
 function subData(){
-  return '<div style="height:12px"></div><button class="btn" id="mExport">'+t('dataExport')+'</button>'+
+  return '<div style="height:12px"></div><button class="btn" id="mExportTxt">导出本对话为 TXT</button>'+
+  '<div style="height:8px"></div>'+
+  '<button class="btn" id="mExportTxtAll">导出全部为 TXT</button>'+
+  '<div style="height:8px"></div>'+
+  '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
   '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
   '<div class="hint">'+t('count')+'：'+convs.length+'</div>';
 }
@@ -2707,6 +2715,8 @@ function subHelp(){
 document.addEventListener('click',async function(e){
   if(e.target.id==='mSave'||e.target.id==='ttsSave'){ syncInputs(); toast(t('save')); }
   if(e.target.id==='ttsTest'){ syncInputs(); speak('你好，这是一段语音试听。'); }
+  if(e.target.id==='mExportTxt'){ exportText(true); return; }
+  if(e.target.id==='mExportTxtAll'){ exportText(false); return; }
   if(e.target.id==='mExport'){ exportAll(); }
   if(e.target.id==='mClear'){
     if(!confirm('清空全部对话？')) return;
@@ -2782,6 +2792,43 @@ $('#subScroll').addEventListener('change',function(e){
   if(e.target.id==='userColorPick'){ S.userColor=e.target.value; saveS(); applyTheme(); renderSubTheme(); }
   if(e.target.id==='aiColorPick'){ S.aiColor=e.target.value; saveS(); applyTheme(); renderSubTheme(); }
 });
+function convToText(c){
+  if(!c) return '';
+  var out=[];
+  out.push('《'+(c.title||'未命名')+'》');
+  out.push('');
+  (c.msgs||[]).forEach(function(m){
+    var txt = String(m.content||'').trim();
+    if(!txt) return;
+    if(m.role==='user') out.push('［我］'+txt);
+    else out.push(txt);
+    out.push('');
+  });
+  return out.join('\n');
+}
+
+function exportText(onlyCurrent){
+  var list = onlyCurrent ? [cur()] : convs;
+  list = list.filter(Boolean);
+  if(!list.length){ toast('没有可导出的对话'); return; }
+  var txt = list.map(convToText).join('\n\n' + '─'.repeat(20) + '\n\n');
+  var inWebView = /wv\)/.test(navigator.userAgent);
+  try{
+    if(!inWebView){
+      var blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=(list[0].title||'对话')+'.txt';
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); },3000);
+      toast('已导出 TXT 文件');
+      return;
+    }
+  }catch(e){}
+  copyText(txt);
+  toast('已复制全文，可直接粘贴到备忘录');
+}
+
 function exportAll(){
   var json = JSON.stringify(convs, null, 2);
   var inWebView = /wv\)/.test(navigator.userAgent) || !document.createElement('a').hasOwnProperty('download');
