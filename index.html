@@ -47,7 +47,8 @@ body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62
 button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;font-size:inherit}
 input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .app{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;
-  background:var(--chat-bg);background-size:cover;background-position:center}
+  padding-top:env(safe-area-inset-top,0px);
+  background:transparent;background-size:cover;background-position:center}
 .main{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
 
 /* 顶栏 */
@@ -563,13 +564,14 @@ body[data-theme="light"] .toast{background:#222c}
   </div>
 
   <div class="dialog-mask" id="updMask">
-    <div class="dialog">
-      <button id="updX" style="position:absolute;right:14px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--card2);color:var(--fg2);font-size:15px;line-height:26px;text-align:center">✕</button>
-      <h3 id="updTitle">发现新版本</h3>
-      <p id="updText"></p>
-      <button class="btn primary" id="updGo">下载安装包</button>
-      <div style="height:8px"></div>
-      <button class="btn" id="updLater">稍后再说</button>
+    <div class="dialog" style="text-align:left">
+      <button id="updX" style="position:absolute;right:12px;top:12px;width:28px;height:28px;border-radius:50%;background:var(--card2);color:var(--fg2);font-size:14px;line-height:28px;text-align:center">✕</button>
+      <h3 id="updTitle" style="text-align:center;margin-bottom:14px">更新内容</h3>
+      <div id="updBody" style="max-height:46vh;overflow-y:auto;font-size:14px;line-height:1.75;color:var(--fg2)"></div>
+      <div style="height:16px"></div>
+      <button class="btn primary" id="updGo" style="display:none">下载安装包</button>
+      <div id="updGoGap" style="height:0"></div>
+      <button class="btn" id="updLater">知道了</button>
     </div>
   </div>
 
@@ -704,7 +706,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 11:23';
+var APP_VERSION='2026-11-18 11:37';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2715,6 +2717,10 @@ function applyTheme(){
   root.style.setProperty('--bubble-ai', toRgba(S.aiColor||(th==='light'?'#ffffff':'#232323'), alpha));
   root.style.setProperty('--bubble-blur', (S.bubbleBlur||0)+'px');
   applyFont();
+  try{
+    var mode = (document.body.getAttribute('data-theme')==='light') ? 'light' : 'dark';
+    if(window.DSApp && window.DSApp.setStatusBar) window.DSApp.setStatusBar(mode);
+  }catch(e){}
   if(!$('#bgLayer')){
     var bl=document.createElement('div'); bl.id='bgLayer';
     var ar=$('#appRoot'); if(ar) ar.insertBefore(bl, ar.firstChild);
@@ -2904,11 +2910,39 @@ var APK_URL = 'https://qiuli0306.github.io/deepseek/deepseek.apk';
 var VER_URL = 'https://qiuli0306.github.io/deepseek/version.json';
 var latestVer = null;
 
-function showUpd(ver){
-  $('#updTitle').textContent = '发现新版本';
-  $('#updText').innerHTML = '当前版本：' + APP_VERSION + '<br>最新版本：' + (ver || '未知') +
-    '<br><br>下载后覆盖安装即可，聊天记录和设置都会保留。';
+var _updLog = [], _needApk = false;
+
+function renderUpdList(entries, needApk){
+  var body = $('#updBody');
+  if(!entries.length){ body.innerHTML = '<div style="text-align:center;color:var(--fg3)">暂无更新说明</div>'; }
+  else {
+    body.innerHTML = entries.map(function(it){
+      return '<div style="margin-bottom:14px">'+
+        '<div style="font-size:12.5px;color:var(--fg3);margin-bottom:5px">'+esc(it.ver||'')+'</div>'+
+        (it.notes||[]).map(function(n){
+          return '<div style="display:flex;gap:7px"><span style="color:var(--blue-txt)">·</span><span>'+esc(n)+'</span></div>';
+        }).join('')+
+      '</div>';
+    }).join('');
+  }
+  var go = $('#updGo');
+  if(needApk){ go.style.display='block'; $('#updGoGap').style.height='8px'; }
+  else { go.style.display='none'; $('#updGoGap').style.height='0'; }
+}
+
+function showUpd(entries, needApk, title){
+  _updLog = entries || [];
+  _needApk = !!needApk;
+  $('#updTitle').textContent = title || (needApk ? '有新版本可用' : '更新内容');
+  renderUpdList(_updLog, _needApk);
   $('#updMask').classList.add('on');
+}
+
+function parseVer(v){
+  // '2026-11-18 11:40' -> 可比较数字
+  var m = String(v||'').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+  if(!m) return 0;
+  return Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
 }
 
 function checkUpdate(manual){
@@ -2916,12 +2950,33 @@ function checkUpdate(manual){
     .then(function(r){ return r.json(); })
     .then(function(j){
       latestVer = (j && j.ver) || null;
+      var log = (j && j.log) || [];
       var seen = localStorage.getItem('dsclone_seen_ver') || '';
-      var hasNew = !!latestVer && latestVer !== APP_VERSION;
+      var seenTs = parseVer(seen);
+
+      // 本次页面版本 vs 最新版本：是否已经跑在新网页上
+      var pageTs = parseVer(APP_VERSION);
+      var latestTs = parseVer(latestVer);
+      var pageIsLatest = latestTs ? (pageTs >= latestTs) : true;
+
+      // 收集所有「比已读更新」的日志（合并展示）
+      var pending = log.filter(function(it){ return parseVer(it.ver) > seenTs; }).slice(0, 5);
+      if(manual && !pending.length) pending = log.slice(0, 3);   // 手动点开时也给他看最近几条
+
       var dot = $('#updDot');
-      if(dot) dot.style.display = (hasNew && latestVer !== seen) ? 'block' : 'none';
-      if(hasNew && (manual || latestVer !== seen)) showUpd(latestVer);
-      else if(manual) toast('已是最新版本  '+APP_VERSION);
+      var showDot = pending.length && latestVer !== seen;
+      if(dot) dot.style.display = showDot ? 'block' : 'none';
+
+      if(!pageIsLatest){
+        // 页面是旧的：要么缓存，要么原生包旧 → 提示装 APK
+        showUpd(pending, true, '发现更新');
+        return;
+      }
+      if(pending.length && (manual || latestVer !== seen)){
+        showUpd(pending, false, manual ? '最近更新' : '更新内容');
+        return;
+      }
+      if(manual) toast('已是最新版本  ' + APP_VERSION);
     })
     .catch(function(){ if(manual) toast('检查更新失败，请稍后再试'); });
 }
@@ -2933,6 +2988,10 @@ $('#updGo').addEventListener('click', function(){
   try{ window.open(APK_URL, '_blank'); }catch(e){ location.href = APK_URL; }
 });
 $('#updLater').addEventListener('click', function(){
+  localStorage.setItem('dsclone_seen_ver', latestVer || APP_VERSION);
+  $('#updMask').classList.remove('on');
+});
+$('#updX').addEventListener('click', function(){
   localStorage.setItem('dsclone_seen_ver', latestVer || APP_VERSION);
   $('#updMask').classList.remove('on');
 });
