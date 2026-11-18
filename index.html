@@ -44,7 +44,7 @@ body.menu-open .mdwrap{-webkit-touch-callout:none;user-select:none}
   white-space:pre-wrap;background:var(--card2);padding:10px;border-radius:8px;word-break:break-all}
 .math-block:not(.math-ok):before{content:attr(data-tex)}
 .math-ok:before{content:none}
-.math-block[data-err]:before{content:"公式渲染失败：" attr(data-err);color:#e5484d}
+.math-block.math-raw{border-left:2px solid var(--line);background:transparent;border-radius:0;padding:6px 10px}
 #msgs textarea,#msgs input{-webkit-user-select:text;user-select:text}
 #msgs .pickable{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62;font-weight:450;
@@ -717,7 +717,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 15:20';
+var APP_VERSION='2026-11-18 15:25';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2907,7 +2907,7 @@ function loadKatex(cb){
 function sanitizeTex(tex){
   t = String(tex||'');
   // KaTeX 不支持的常见宏 → 降级替换
-  t = t.replace(/\\scalebox\s*\{[^{}]*\}/g, '\\small');
+  t = t.replace(/\\scalebox\s*\{[^{}]*\}/g, '');
   t = t.replace(/\\resizebox\s*\{[^{}]*\}\s*\{[^{}]*\}/g, '');
   t = t.replace(/\\hfill/g, '\\hspace{1em}');
   t = t.replace(/\\vspace\s*\{[^{}]*\}/g, '');
@@ -2916,6 +2916,9 @@ function sanitizeTex(tex){
   t = t.replace(/\\selectfont/g, '');
   t = t.replace(/\\noindent/g, '');
   t = t.replace(/\\mbox/g, '\\text');
+  t = t.replace(/\\mathrm\s*/g, '');
+  t = t.replace(/\\fcolorbox\s*\{[^{}]*\}\s*\{[^{}]*\}/g, '');
+  t = t.replace(/\\colorbox\s*\{[^{}]*\}\s*\{#[0-9A-Fa-f]{3,8}\}/g, '');
   t = t.replace(/\\textwidth/g, '\\linewidth');
   t = t.replace(/\\Bigg?[lr]?\b/g, '');
   t = t.replace(/\\displaystyle/g, '');
@@ -2936,8 +2939,9 @@ function renderMath(scope){
         katex.render(tex, el, {displayMode:true, throwOnError:true, strict:false});
         el.classList.add('math-ok');
       }catch(e){
+        // 渲染不了就当普通代码块原样显示，不报错
         el.classList.remove('math-ok');
-        el.setAttribute('data-err', (e && e.message) ? e.message : '渲染失败');
+        el.classList.add('math-raw');
       }
     });
   });
