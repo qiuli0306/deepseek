@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 19:47';
+var APP_VERSION='2026-11-18 20:38';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -748,7 +748,8 @@ if(!S.uiMigrated){ S.chatStyle='command'; S.waifu=false; S.showAvatar=false; S.u
 try{ recentImgs=JSON.parse(localStorage.getItem('dsclone_recent')||'[]')||[]; }catch(e){ recentImgs=[]; }
 
 /* ============ IndexedDB 存储（大容量，替代 localStorage 存对话） ============ */
-var _idbDB = null, _idbReady = false;
+var _idbDB = null, _idbReady = false, _storeReady = false;
+var _storeState = { idb:'未检测', ready:false, count:0, err:'' };
 function idbOpenDB(){
   return new Promise(function(res, rej){
     if(_idbDB) return res(_idbDB);
@@ -788,6 +789,11 @@ function idbHas(key){
 
 function saveS(){ localStorage.setItem(SK, JSON.stringify(S)); }
 function saveC(){
+  // 数据还没从数据库读出来时，绝不写入，否则会用空列表覆盖历史
+  if(!_storeReady){
+    if(window.__storeEmptyConfirmed) { /* 确认是全新用户，可以写 */ }
+    else return;
+  }
   try{ idbSet('convs', convs).catch(function(){ toast('保存失败，请检查存储空间'); }); }
   catch(e){ toast('保存失败：'+(e.message||'')); }
 }
@@ -1016,10 +1022,17 @@ document.addEventListener('contextmenu',function(e){
 $('#msgs').addEventListener('touchstart',function(e){
   if(e.target.closest('.pickable')) return;
   if(e.touches && e.touches.length>1) return;   // 截图等手势不触发
-  var node=e.target.closest('.msg.ai'); if(!node) return;
   var t=e.touches&&e.touches[0];
   _lpX = t?t.clientX:0; _lpY = t?t.clientY:0;
-  aiLp=setTimeout(function(){ aiLp=null; openAiMenu(+node.dataset.i, _lpX, _lpY); },500);
+  var nodeAI=e.target.closest('.msg.ai');
+  if(nodeAI){
+    aiLp=setTimeout(function(){ aiLp=null; openAiMenu(+nodeAI.dataset.i, _lpX, _lpY); },500);
+    return;
+  }
+  var nodeU=e.target.closest('.msg.user');
+  if(nodeU){
+    aiLp=setTimeout(function(){ aiLp=null; openMsgMenu(+nodeU.dataset.i, _lpX, _lpY); },500);
+  }
 },{passive:true});
 $('#msgs').addEventListener('touchend',function(){ if(aiLp){ clearTimeout(aiLp); aiLp=null; } });
 $('#msgs').addEventListener('touchmove',function(){ if(aiLp){ clearTimeout(aiLp); aiLp=null; } },{passive:true});
@@ -1124,6 +1137,45 @@ function openAiMenu(idx, px, py){
       toast('已记录举报内容');
     }
   };
+}
+
+/* ================= 修改已发送的消息 ================= */
+function openEditBox(idx){
+  var c=cur(); if(!c) return;
+  var m=c.msgs[idx]; if(!m || m.role!=='user') return;
+  var old = m.content || '';
+  var mask=$('#dlgMask'), box=$('#dlgTitle'), txt=$('#dlgText');
+  $('#dlgTitle').textContent='修改输入';
+  $('#dlgText').innerHTML =
+    '<textarea id="editTa" style="width:100%;min-height:90px;background:var(--card2);border:0;border-radius:12px;'+
+    'padding:12px;font-size:15px;line-height:1.6;color:var(--fg);resize:none;outline:none">'+esc(old)+'</textarea>'+
+    '<div style="display:flex;gap:8px;margin-top:12px">'+
+      '<button id="editCancel" class="btn" style="margin:0;flex:1">取消</button>'+
+      '<button id="editOk" class="btn primary" style="margin:0;flex:1">发送</button>'+
+    '</div>';
+  mask.classList.add('on');
+  var ta=$('#editTa');
+  setTimeout(function(){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 60);
+
+  $('#editCancel').onclick=function(){ mask.classList.remove('on'); };
+  $('#editOk').onclick=function(){
+    var val=ta.value.trim();
+    if(!val){ toast('内容不能为空'); return; }
+    mask.classList.remove('on');
+    applyEdit(idx, val);
+  };
+}
+
+function applyEdit(idx, newText){
+  var c=cur(); if(!c) return;
+  var m=c.msgs[idx];
+  if(!m) return;
+  m.content = newText;
+  // 删掉这条之后的所有消息，重新生成
+  c.msgs.splice(idx+1);
+  c.titleGen = 0;
+  saveC(); renderChat();
+  setTimeout(function(){ send(newText, null, true); }, 80);
 }
 
 /* ================= 抽屉 ================= */
@@ -1678,7 +1730,7 @@ async function autoTitle(c){
     else { c.titleGen=-1; saveC(); }
   }catch(e){ c.titleGen=-1; saveC(); }
 }
-async function send(text, retryIndex){
+async function send(text, retryIndex, skipPush){
   text=(text||'').trim();
   if(busy) return;
   if(!S.apiKey){ toast(t('notKey')); openSettings(); return; }
@@ -1689,6 +1741,7 @@ async function send(text, retryIndex){
   if(!c){ c={id:String(Date.now()),title:'',msgs:[],ts:Date.now()}; convs.unshift(c); curId=c.id; isNew=true; }
 
   if(retryIndex!=null){ c.msgs=c.msgs.slice(0,retryIndex); }
+  else if(skipPush){ /* 编辑场景：复用已改写的用户消息 */ }
   else{
     c.msgs.push({
       role:'user', content:text,
@@ -2057,7 +2110,7 @@ function copyText(txt){
     fallback();
   }
 }
-function openMsgMenu(idx){
+function openMsgMenu(idx, px, py){
   var c=cur(); if(!c) return;
   var m=c.msgs[idx]; if(!m) return;
   var menu=document.getElementById('msgMenu');
@@ -2066,7 +2119,9 @@ function openMsgMenu(idx){
     menu.id='msgMenu'; menu.className='convmenu';
     document.body.appendChild(menu);
   }
-  menu.innerHTML='<button data-mact="copy">复制</button><button data-mact="del" class="danger">删除这条消息</button>';
+  menu.innerHTML='<button data-mact="copy">复制</button>'+
+    '<button data-mact="edit">修改</button>'+
+    '<button data-mact="del" class="danger">删除这条消息</button>';
   menu.dataset.idx=idx;
   menu.classList.add('on');
   var mask=document.getElementById('convMask'); mask.classList.add('on');
@@ -2074,6 +2129,7 @@ function openMsgMenu(idx){
     var b=ev.target.closest('[data-mact]'); if(!b) return;
     menu.classList.remove('on'); mask.classList.remove('on');
     if(b.dataset.mact==='copy') copyText(m.content||'');
+    if(b.dataset.mact==='edit'){ openEditBox(idx); }
     if(b.dataset.mact==='del'){
       c.msgs.splice(idx,1); saveC(); renderChat();
     }
@@ -2305,6 +2361,9 @@ function renderSettings(){
    '<div class="sec">'+t('about')+'</div>'+
    '<div class="group">'+
      '<div class="row"><span class="ic">'+ICON.info+'</span><span class="k">网页版本</span><span class="v" style="font-size:12.5px">'+APP_VERSION+'</span></div>'+
+     '<div class="row"><span class="ic">'+ICON.info+'</span><span class="k">存储状态</span><span class="v" style="font-size:12px">'+
+        (_storeState.idb||'未检测')+( _storeState.ready?' · 已就绪':' · 未就绪')+' · '+convs.length+' 个对话'+
+        (_storeState.err?(' · '+_storeState.err):'')+'</span></div>'+
      '<div class="row tap" data-open="update"><span class="ic">'+ICON.info+'</span><span class="k">'+t('checkUpdate')+'</span><span class="v">1.0.2</span>'+CHEV+'</div>'+
      '<div class="row tap" data-open="agree"><span class="ic">'+ICON.doc+'</span><span class="k">'+t('agreement')+'</span>'+CHEV+'</div>'+
    '</div>'+
@@ -3207,14 +3266,24 @@ applyLang();
           convs = data;
           renderConvs(); renderChat(); updateHeadTitle();
         }
+        _storeReady = true;   // 读到数据（哪怕为空数组）才允许写入
       } else if(convs.length){
         await idbSet('convs', convs);
         var check = await idbGet('convs');
         if(Array.isArray(check) && check.length === convs.length){
           try{ localStorage.removeItem(CK); localStorage.removeItem('dsclone_convs_v3'); localStorage.removeItem('dsclone_convs_v2'); }catch(e){}
         }
+      } else {
+        // 全新用户：没有历史，也没有 localStorage 数据
+        window.__storeEmptyConfirmed = true;
       }
-    }catch(e){ /* IDB 不可用时继续用内存，不影响聊天 */ }
+      _storeReady = true;
+      _storeState.idb='可用'; _storeState.ready=_storeReady; _storeState.count=convs.length;
+    }catch(e){
+      _storeReady = false;
+      _storeState.idb='不可用'; _storeState.err=String(e&&e.message||e).slice(0,60);
+      setTimeout(function(){ toast('本地存储读取失败，本次聊天不会被保存'); }, 800);
+    }
   })();
 })();
 
