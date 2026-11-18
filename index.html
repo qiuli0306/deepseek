@@ -41,7 +41,7 @@ body.menu-open .mdwrap{-webkit-touch-callout:none;user-select:none}
 #msgs .pickable,#msgs .pickable *{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 #msgs textarea,#msgs input{-webkit-user-select:text;user-select:text}
 #msgs .pickable{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
-body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62;font-family:system-ui,-apple-system,'HarmonyOS Sans','MiSans','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62;font-weight:450;font-family:system-ui,-apple-system,'HarmonyOS Sans','MiSans','PingFang SC','Noto Sans CJK SC','Source Han Sans SC',sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Hiragino Sans","Helvetica Neue",sans-serif;
   -webkit-font-smoothing:antialiased}
 button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;font-size:inherit}
@@ -160,6 +160,7 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .tools button{width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:var(--fg2)}
 .tools button:active{opacity:.5}
 .tools svg{width:19px;height:19px}
+.tools svg path,.tools svg rect,.tools svg circle,.tools svg line{stroke-width:2}
 .tools button.on{color:var(--blue)}
 
 /* 思考块 */
@@ -703,7 +704,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 11:05';
+var APP_VERSION='2026-11-18 11:08';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
