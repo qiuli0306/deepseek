@@ -155,11 +155,11 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 
 /* 消息工具条 */
 .tools{display:flex;align-items:center;justify-content:space-between;margin-top:12px;color:var(--fg2)}
-.tools .l{display:flex;align-items:center;gap:13px}
+.tools .l{display:flex;align-items:center;gap:6px}
 .tools .r{display:flex;align-items:center;gap:12px}
-.tools button{width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:var(--fg2)}
+.tools button{width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--fg2)}
 .tools button:active{opacity:.5}
-.tools svg{width:19px;height:19px}
+.tools svg{width:18px;height:18px}
 .tools svg path,.tools svg rect,.tools svg circle,.tools svg line{stroke-width:2}
 .tools button.on{color:var(--blue)}
 
@@ -704,7 +704,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 11:08';
+var APP_VERSION='2026-11-18 11:13';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -954,6 +954,7 @@ document.addEventListener('contextmenu',function(e){
 });
 $('#msgs').addEventListener('touchstart',function(e){
   if(e.target.closest('.pickable')) return;
+  if(e.touches && e.touches.length>1) return;   // 截图等手势不触发
   var node=e.target.closest('.msg.ai'); if(!node) return;
   var t=e.touches&&e.touches[0];
   _lpX = t?t.clientX:0; _lpY = t?t.clientY:0;
