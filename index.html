@@ -707,7 +707,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-18 13:24';
+var APP_VERSION='2026-11-18 13:56';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2709,10 +2709,16 @@ async function speak(text){
         body:JSON.stringify({model:cfg.model||'speech-02-hd',text:text,stream:false,
           voice_setting:{voice_id:cfg.voice||v.minimax,speed:1,vol:1,pitch:0},
           audio_setting:{sample_rate:32000,bitrate:128000,format:'mp3'}})});
-      if(!r1.ok) throw new Error('HTTP '+r1.status);
-      var j=await r1.json();
+      var j=await r1.json().catch(function(){ return null; });
+      if(!r1.ok){
+        var em=(j&&j.base_resp&&j.base_resp.status_msg)||('HTTP '+r1.status);
+        throw new Error(em);
+      }
+      if(j&&j.base_resp&&j.base_resp.status_code && j.base_resp.status_code!==0){
+        throw new Error((j.base_resp.status_msg||'接口返回错误')+' ('+j.base_resp.status_code+')');
+      }
       var hex=j&&j.data&&j.data.audio;
-      if(!hex) throw new Error('无音频数据');
+      if(!hex) throw new Error('返回里没有音频字段，检查模型名/音色ID是否正确');
       src=URL.createObjectURL(new Blob([hexToBytes(hex)],{type:'audio/mpeg'}));
     } else if(prov==='elevenlabs'){
       var r2=await fetch(base+'/text-to-speech/'+encodeURIComponent(cfg.voice||'21m00Tcm4TlvDq8ikWAM')+'?output_format=mp3_44100_128',
