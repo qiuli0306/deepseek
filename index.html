@@ -30,6 +30,11 @@ body[data-theme="light"]{
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden}
+#bgLayer{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:var(--bg-img,none) center/cover no-repeat;
+  background-color:var(--bg-color,transparent);
+  opacity:var(--bg-alpha,1);
+  filter:blur(var(--bg-blur,0px))}
 body{background:var(--chat-bg);color:var(--fg);font-size:16px;line-height:1.65;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans SC","Hiragino Sans","Helvetica Neue",sans-serif;
   -webkit-font-smoothing:antialiased}
@@ -62,7 +67,8 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .msg{margin-bottom:28px}
 .msg.user{display:flex;justify-content:flex-end}
 .bubble{font-size:calc(15.5px * var(--fs));word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
-.msg.user .bubble{max-width:86%;background:var(--bubble-user);border-radius:18px 18px 5px 18px;padding:9px 14px}
+.msg.user .bubble{max-width:86%;background:var(--bubble-user);border-radius:18px 18px 5px 18px;padding:9px 14px;
+  backdrop-filter:blur(var(--bubble-blur,0px));-webkit-backdrop-filter:blur(var(--bubble-blur,0px))}
 .msg.user .bubble .txt{margin-top:2px}
 .usermeta{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:7px;color:var(--fg2);font-size:12.5px}
 .usermeta .av{width:24px;height:24px;border-radius:50%;overflow:hidden;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--fg2)}
@@ -106,8 +112,10 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .multi .body .bubble:last-child{margin-bottom:0}
 .style-command .multi .body .bubble{background:#262626;padding:10px 14px;border-radius:16px}
 .style-command .msg.ai .bubble{background:none;padding:0}
-.style-bubble .msg.ai .body{background:var(--bubble-ai);padding:9px 13px;border-radius:16px;max-width:88%}
-.style-bubble .msg.ai .content>.bubble{background:var(--bubble-ai);padding:9px 13px;border-radius:14px;
+.style-bubble .msg.ai .body{background:var(--bubble-ai);padding:9px 13px;border-radius:16px;max-width:88%;
+  backdrop-filter:blur(var(--bubble-blur,0px));-webkit-backdrop-filter:blur(var(--bubble-blur,0px))}
+.style-bubble .msg.ai .content>.bubble{background:var(--bubble-ai);backdrop-filter:blur(var(--bubble-blur,0px));
+  -webkit-backdrop-filter:blur(var(--bubble-blur,0px));padding:9px 13px;border-radius:14px;
   line-height:1.55;font-size:calc(15.5px * var(--fs));white-space:normal;word-break:break-word;
   overflow-wrap:anywhere;max-width:86%}
 .style-bubble .msg.ai .content>.bubble p{margin:0}
@@ -662,6 +670,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
+var APP_VERSION='2026-11-18 08:28';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1505,13 +1514,6 @@ async function send(text, retryIndex){
   saveC(); renderConvs(); renderChat(); updateHeadTitle(); setBusy(true); autoScroll=true;
 
   var body={model:model,messages:buildMessages(c),stream:true};
-  // 联网搜索：DeepSeek 官方内置工具（服务端执行）
-  if(S.webSearch && /api\.deepseek\.com/i.test(S.baseUrl||'')){
-    body.tools = [
-      {type:'builtin_function', function:{name:'deepseek_web_search'}},
-      {type:'builtin_function', function:{name:'deepseek_read_url'}}
-    ];
-  }
   var tp=parseFloat(S.temp);
   if(!/reasoner/i.test(model) && !isNaN(tp)) body.temperature=tp;
 
@@ -1639,7 +1641,13 @@ function setVoiceMode(on){
 function recLang(){ return S.lang==='system'?'zh-CN':S.lang; }
 function startRec(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){ toast('当前环境不支持语音输入，可直接用键盘输入'); setVoiceMode(false); return; }
+  if(!SR){
+    $('#dlgTitle').textContent='语音输入暂不支持';
+    $('#dlgText').innerHTML='语音功能正在开发中，后续版本会支持，敬请期待。<br><br>现在可以先用键盘打字，一样方便。';
+    $('#dlgMask').classList.add('on');
+    setVoiceMode(false);
+    return;
+  }
   if(listening) return;
   if(!rec){
     rec=new SR();
@@ -1690,7 +1698,7 @@ $('#tgThink').addEventListener('click',function(){
 $('#tgSearch').addEventListener('click',function(){
   S.webSearch=!S.webSearch; saveS();
   this.classList.toggle('on',S.webSearch);
-  toast(S.webSearch?'智能搜索已开启（DeepSeek 官方接口可用）':'智能搜索已关闭');
+  toast(S.webSearch?'智能搜索已开启':'智能搜索已关闭');
 });
 
 /* ================= 点击委托 ================= */
@@ -1984,6 +1992,7 @@ function renderSettings(){
    '<div class="group"><div class="row tap" data-open="voice"><span class="ic">'+ICON.voice+'</span><span class="k">'+t('voiceTone')+'</span><span class="v">'+(S.tts&&S.tts.prov?S.tts.prov:'未配置')+'</span>'+CHEV+'</div></div>'+
    '<div class="sec">'+t('about')+'</div>'+
    '<div class="group">'+
+     '<div class="row"><span class="ic">'+ICON.info+'</span><span class="k">网页版本</span><span class="v" style="font-size:12.5px">'+APP_VERSION+'</span></div>'+
      '<div class="row tap" data-open="update"><span class="ic">'+ICON.info+'</span><span class="k">'+t('checkUpdate')+'</span><span class="v">1.0.2</span>'+CHEV+'</div>'+
      '<div class="row tap" data-open="agree"><span class="ic">'+ICON.doc+'</span><span class="k">'+t('agreement')+'</span>'+CHEV+'</div>'+
    '</div>'+
@@ -2099,7 +2108,13 @@ function subThemeSub(){
   '<div class="group" style="margin-top:14px">'+
     '<div class="row"><span class="k">'+t('showAvatar')+'<div style="font-size:12px;color:var(--fg3);line-height:1.5;margin-top:2px">'+t('showAvatarD')+'</div></span><div class="sw '+(S.showAvatar?'on':'')+'" data-toggle="showAvatar"><i></i></div></div>'+
 
-    '<div class="row"><span class="k">'+t('glass')+'</span><div class="sw '+(S.glass?'on':'')+'" data-toggle="glass"><i></i></div></div>'+
+
+  '</div>'+
+  '<div class="sec">背景与气泡</div>'+
+  '<div class="group">'+
+    '<div class="row"><span class="k">背景透明度</span><input type="range" id="bgAlpha" min="0" max="100" step="5" value="'+(S.bgAlpha==null?100:S.bgAlpha)+'"><span class="v" id="bgAlphaVal">'+(S.bgAlpha==null?100:S.bgAlpha)+'%</span></div>'+
+    '<div class="row"><span class="k">背景模糊</span><input type="range" id="bgBlur" min="0" max="24" step="1" value="'+(S.bgBlur||0)+'"><span class="v" id="bgBlurVal">'+(S.bgBlur||0)+'px</span></div>'+
+    '<div class="row"><span class="k">气泡透明度</span><input type="range" id="bubbleAlpha" min="0" max="100" step="5" value="'+(S.bubbleAlpha==null?100:S.bubbleAlpha)+'"><span class="v" id="bubbleAlphaVal">'+(S.bubbleAlpha==null?100:S.bubbleAlpha)+'%</span></div>'+
   '</div>'+
   '<div class="sec">'+t('avatarSec')+'</div>'+
   '<div class="group">'+
@@ -2318,6 +2333,23 @@ document.addEventListener('click',async function(e){
     saveS(); $('#subScroll').innerHTML=subMore(); return;
   }
 });
+$('#subScroll').addEventListener('input',function(e){
+  if(e.target.id==='bgAlpha'){
+    S.bgAlpha=+e.target.value; saveS();
+    var a1=$('#bgAlphaVal'); if(a1) a1.textContent=S.bgAlpha+'%';
+    applyTheme(); return;
+  }
+  if(e.target.id==='bgBlur'){
+    S.bgBlur=+e.target.value; saveS();
+    var a2=$('#bgBlurVal'); if(a2) a2.textContent=S.bgBlur+'px';
+    applyTheme(); return;
+  }
+  if(e.target.id==='bubbleAlpha'){
+    S.bubbleAlpha=+e.target.value; saveS();
+    var a3=$('#bubbleAlphaVal'); if(a3) a3.textContent=S.bubbleAlpha+'%';
+    applyTheme(); return;
+  }
+});
 $('#subScroll').addEventListener('change',function(e){
   if(e.target.id==='userNameIn'){ S.userName=(e.target.value||'').trim()||'我'; saveS(); renderChat(); return; }
   if(e.target.id==='aiNameIn'){ S.aiName=(e.target.value||'').trim(); saveS(); renderChat(); return; }
@@ -2412,11 +2444,26 @@ function applyTheme(){
   document.body.dataset.theme=th;
   var root=document.documentElement;
   root.style.setProperty('--fs',S.fontScale);
-  root.style.setProperty('--bubble-user',S.userColor||(th==='light'?'#dfe8ff':'#2d2d2d'));
-  root.style.setProperty('--bubble-ai',S.aiColor||(th==='light'?'#ffffff':'#232323'));
+  var alpha = (S.bubbleAlpha==null?100:S.bubbleAlpha)/100;   // 仅气泡
+  function toRgba(hex, a){
+    hex = (hex||'').replace('#','');
+    if(hex.length===3) hex = hex.split('').map(function(c){return c+c;}).join('');
+    var r=parseInt(hex.slice(0,2),16)||0, g=parseInt(hex.slice(2,4),16)||0, b=parseInt(hex.slice(4,6),16)||0;
+    return 'rgba('+r+','+g+','+b+','+a+')';
+  }
+  root.style.setProperty('--bubble-user', toRgba(S.userColor||(th==='light'?'#dfe8ff':'#2d2d2d'), alpha));
+  root.style.setProperty('--bubble-ai', toRgba(S.aiColor||(th==='light'?'#ffffff':'#232323'), alpha));
+  root.style.setProperty('--bubble-blur', (S.bubbleBlur||0)+'px');
+  if(!$('#bgLayer')){
+    var bl=document.createElement('div'); bl.id='bgLayer';
+    var ar=$('#appRoot'); if(ar) ar.insertBefore(bl, ar.firstChild);
+  }
   var app=$('#appRoot');
-  if(S.bgImage){ app.style.backgroundImage='url("'+S.bgImage+'")'; app.style.backgroundColor='transparent'; }
-  else { app.style.backgroundImage=''; app.style.backgroundColor=S.chatBg||(th==='light'?'#fbfbfb':'#0d0d0d'); }
+  root.style.setProperty('--bg-alpha', (S.bgAlpha==null?100:S.bgAlpha)/100);
+  root.style.setProperty('--bg-blur', (S.bgBlur||0)+'px');
+  root.style.setProperty('--bg-img', S.bgImage?('url("'+S.bgImage+'")'):'none');
+  root.style.setProperty('--bg-color', S.chatBg||'transparent');
+  app.style.backgroundImage=''; app.style.backgroundColor='transparent';
   root.style.setProperty('--chat-bg',S.chatBg||(th==='light'?'#fbfbfb':'#0d0d0d'));
   var m=document.querySelector('meta[name=theme-color]');
   if(m) m.setAttribute('content',th==='light'?'#fbfbfb':'#0d0d0d');
