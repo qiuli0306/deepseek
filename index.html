@@ -76,7 +76,7 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .welcome p{margin:10px 0 0;color:var(--fg2);font-size:14.5px}
 
 /* 消息 */
-.msgs{padding:18px 16px 26px}
+.msgs{padding:18px 12px 26px}
 .msg{margin-bottom:28px;max-width:100%;overflow-wrap:break-word;word-break:break-word}
 .msg.ai .body p,.msg.ai .body div,.msg.ai .body li,.msg.ai .body h1,.msg.ai .body h2,.msg.ai .body h3{max-width:100%;overflow-wrap:anywhere}
 .msg.ai .body img,.msg.ai .body table,.msg.ai .body pre{max-width:100%}
@@ -716,7 +716,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 17:05';
+var APP_VERSION='2026-11-19 18:02';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1456,14 +1456,108 @@ function readImage(file){
     fr.readAsDataURL(file);
   });
 }
+// 从 zip（docx/xlsx/pptx）里抽取指定 xml 的文本
+async function unzipEntryText(buf, entryName){
+  var dv = new DataView(buf), len = buf.byteLength;
+  // 找 EOCD
+  var eocd = -1;
+  for(var i = len - 22; i >= Math.max(0, len - 66000); i--){
+    if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  }
+  if(eocd < 0) throw new Error('不是有效的文档');
+  var cdCount = dv.getUint16(eocd + 10, true);
+  var cdOff = dv.getUint32(eocd + 16, true);
+
+  var p = cdOff;
+  for(var k = 0; k < cdCount; k++){
+    if(dv.getUint32(p, true) !== 0x02014b50) break;
+    var method = dv.getUint16(p + 10, true);
+    var compSize = dv.getUint32(p + 20, true);
+    var nameLen = dv.getUint16(p + 28, true);
+    var extraLen = dv.getUint16(p + 30, true);
+    var cmtLen = dv.getUint16(p + 32, true);
+    var lho = dv.getUint32(p + 42, true);
+    var name = new TextDecoder('utf-8').decode(new Uint8Array(buf, p + 46, nameLen));
+    if(name === entryName){
+      // 读本地文件头，定位数据区
+      var lNameLen = dv.getUint16(lho + 26, true);
+      var lExtraLen = dv.getUint16(lho + 28, true);
+      var dataStart = lho + 30 + lNameLen + lExtraLen;
+      var data = new Uint8Array(buf, dataStart, compSize);
+      if(method === 0) return new TextDecoder('utf-8').decode(data);
+      if(method === 8){
+        if(typeof DecompressionStream === 'undefined') throw new Error('当前环境不支持解压');
+        var ds = new DecompressionStream('deflate-raw');
+        var stream = new Blob([data]).stream().pipeThrough(ds);
+        var out = await new Response(stream).arrayBuffer();
+        return new TextDecoder('utf-8').decode(out);
+      }
+      throw new Error('不支持的压缩方式');
+    }
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+  throw new Error('文档里没找到正文');
+}
+
+async function docxToText(buf){
+  var xml = await unzipEntryText(buf, 'word/document.xml');
+  // 按段落切分
+  xml = xml.replace(/<w:p[ >]/g, '\n<w:p ');
+  var blocks = [];
+  var segs = xml.split('\n<w:p ');
+  for(var i=0;i<segs.length;i++){
+    var t = [];
+    var r2 = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g, m2;
+    while((m2 = r2.exec(segs[i]))) t.push(m2[1]);
+    if(t.length) blocks.push(t.join(''));
+  }
+  var out = blocks.join('\n')
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+    .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+  return out.replace(/\n{3,}/g,'\n\n').trim();
+}
+
 function readDoc(file){
   return new Promise(function(resolve){
+    var name = (file.name||'').toLowerCase();
+    var isDocx = /\.(docx|xlsx|pptx)$/.test(name);
+
+    if(isDocx){
+      if(file.size > 20*1024*1024){ resolve({error:'文档超过 20MB'}); return; }
+      var fr0 = new FileReader();
+      fr0.onload = async function(){
+        try{
+          var buf = fr0.result;
+          var text;
+          if(/\.docx$/.test(name)) text = await docxToText(buf);
+          else if(/\.xlsx$/.test(name)){
+            text = await unzipEntryText(buf, 'xl/sharedStrings.xml').catch(function(){ return ''; });
+            text = text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+          } else {
+            var slides = [];
+            for(var si=1; si<=30; si++){
+              try{
+                var sp = await unzipEntryText(buf, 'ppt/slides/slide'+si+'.xml');
+                slides.push(sp.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim());
+              }catch(e){ break; }
+            }
+            text = slides.join('\n\n');
+          }
+          if(!text || !text.trim()){ resolve({error:'文档里没提取到文字'}); return; }
+          resolve({text: text.slice(0, 120000)});
+        }catch(e){ resolve({error:'文档解析失败：'+(e.message||'')}); }
+      };
+      fr0.onerror = function(){ resolve({error:'读取失败'}); };
+      fr0.readAsArrayBuffer(file);
+      return;
+    }
+
     if(file.size>400*1024){ resolve({error:'文件超过 400KB'}); return; }
     var fr=new FileReader();
     fr.onload=function(){
       var txt=String(fr.result||'');
-      if(/[\u0000-\u0008\u000E-\u001F]/.test(txt.slice(0,400))){ resolve({error:'二进制文件暂不支持'}); return; }
-      resolve({text:txt.slice(0,60000)});
+      if(/[\u0000-\u0008\u000E-\u001F]/.test(txt.slice(0,400))){ resolve({error:'这个格式读不了，试试另存为 txt 或 docx'}); return; }
+      resolve({text:txt.slice(0,120000)});
     };
     fr.onerror=function(){ resolve({error:'读取失败'}); };
     fr.readAsText(file,'utf-8');
@@ -3303,7 +3397,15 @@ async function initCustomFonts(){
   if(!S.fontFamily || S.fontFamily.indexOf('custom:')!==0) return;
   var n = S.fontFamily.slice(7);
   var ok = await registerCustomFont(n);
-  if(!ok){ S.fontFamily='system'; saveS(); toast('自定义字体加载失败，已切回系统默认'); }
+  if(ok){ applyFont(); return; }
+
+  // 首次失败：等 300ms 重试（IndexedDB 冷启动偶尔慢）
+  await new Promise(function(r){ setTimeout(r, 300); });
+  ok = await registerCustomFont(n);
+  if(ok){ applyFont(); return; }
+
+  // 二次失败：保留选择，明确提示，不擅自改回系统默认
+  toast('自定义字体「'+n+'」加载失败，可到 设置→个性化→字体 重新选择');
   applyFont();
 }
 
