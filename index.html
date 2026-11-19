@@ -62,7 +62,7 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .ibtn{width:42px;height:42px;display:flex;align-items:center;justify-content:center;color:var(--fg);flex:0 0 auto}
 .ibtn:active{opacity:.45}
 .ibtn.on{color:var(--blue)}
-.header .title{flex:1;min-width:0;text-align:center;font-size:16px;font-weight:600;
+.header .title{flex:1;min-width:0;text-align:left;padding-left:6px;font-size:16.5px;font-weight:600;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px}
 
 /* 滚动 */
@@ -119,7 +119,10 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .role-name{margin-bottom:7px}
 .role-name{font-size:12px;color:var(--fg2);margin-bottom:5px;padding-left:3px;line-height:1.2}
 .role-name.me{text-align:right;padding-right:3px}
-.msg.user .wrapin{display:flex;flex-direction:column;align-items:flex-end;max-width:90%;margin-left:auto}
+.msg.user .wrapin{display:flex;flex-direction:column;align-items:flex-end;max-width:100%!important;margin-left:auto!important;margin-right:0!important}
+.msg.user .row2{margin-right:0!important}
+.msg.user .bubble{margin-right:0!important}
+.msg.ai{padding-left:6px}
 .msg.user .bubble{max-width:100%}
 .msg.ai.multi .body{background:none!important;padding:0!important}
 .multi .body .bubble{background:#262626;border-radius:16px;padding:10px 14px;margin-bottom:9px;
@@ -716,7 +719,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 18:19';
+var APP_VERSION='2026-11-19 18:46';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
