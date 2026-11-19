@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 13:48';
+var APP_VERSION='2026-11-19 15:08';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1628,6 +1628,30 @@ async function webSearch(query){
     var body=it.content||it.snippet||it.text||it.summary||it.description||'';
     return (i+1)+'. '+title+(link?'\n   '+link:'')+(body?'\n   '+String(body).replace(/\s+/g,' ').slice(0,400):'');
   }).join('\n\n');
+}
+
+async function testApiKey(){
+  syncInputs();
+  var key = (S.apiKey||'').trim();
+  if(!key){ toast('请先填 API Key'); return; }
+  var base=(S.baseUrl||'https://api.deepseek.com').replace(/\/+$/,'');
+  var model = S.model || 'deepseek-chat';
+  toast('测试中…');
+  try{
+    var r = await fetch(base + '/chat/completions', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body: JSON.stringify({model:model, messages:[{role:'user',content:'hi'}], max_tokens:1, stream:false})
+    });
+    if(r.ok){ toast('连接正常，Key 有效 ✅'); return; }
+    var txt=''; try{ txt = await r.text(); }catch(e){}
+    if(r.status===401) toast('Key 无效，请重新复制 ❌');
+    else if(r.status===402) toast('余额不足，请充值 ❌');
+    else if(r.status===404) toast('模型名或地址不对 ❌');
+    else toast('失败 '+r.status+'：'+txt.slice(0,60));
+  }catch(e){
+    toast('网络失败：无法连接 Base URL');
+  }
 }
 
 function buildMessages(c){
@@ -2668,6 +2692,8 @@ function subMore(){
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
   '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
+  '<div style="height:8px"></div>'+
+  '<button class="btn" id="mTestKey">测试连接（检查 Key 是否有效）</button>'+
   '<div style="height:8px"></div><button class="btn primary" id="mSave">'+t('saveBtn')+'</button><div style="height:30px"></div>';
 }
 function subData(){
@@ -2772,6 +2798,7 @@ document.addEventListener('click',async function(e){
     toast('已清空');
     return;
   }
+  if(e.target.id==='mTestKey'){ testApiKey(); return; }
   if(e.target.id==='mSave'||e.target.id==='ttsSave'){ syncInputs(); toast(t('save')); }
   if(e.target.id==='ttsTest'){ syncInputs(); speak('你好，这是一段语音试听。'); }
   if(e.target.id==='mExportTxt'){ exportText(true); return; }
