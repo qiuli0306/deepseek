@@ -78,6 +78,8 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 /* 消息 */
 .msgs{padding:18px 16px 26px}
 .msg{margin-bottom:28px;max-width:100%;overflow-wrap:break-word;word-break:break-word}
+.msg.ai .body p,.msg.ai .body div,.msg.ai .body li,.msg.ai .body h1,.msg.ai .body h2,.msg.ai .body h3{max-width:100%;overflow-wrap:anywhere}
+.msg.ai .body img,.msg.ai .body table,.msg.ai .body pre{max-width:100%}
 .msg.user{display:flex;justify-content:flex-end}
 .bubble{font-size:calc(15.5px * var(--fs));word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
 .msg.user .bubble{max-width:86%;background:var(--bubble-user);border-radius:18px 18px 5px 18px;padding:9px 14px;
@@ -89,7 +91,7 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .usermeta .more{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--fg3)}
 .usermeta .more:active{background:var(--card2)}
 
-.body{font-size:calc(15.5px * var(--fs));word-break:break-word;overflow-wrap:anywhere}
+.body{font-size:calc(15.5px * var(--fs));word-break:break-word;overflow-wrap:anywhere;max-width:100%;width:100%}
 .body p{margin:0 0 12px}
 .body p:last-child{margin-bottom:0}
 .body h1,.body h2,.body h3,.body h4{margin:18px 0 9px;line-height:1.4;font-weight:600}
@@ -110,7 +112,7 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .msg.ai{display:flex}
 .msg .aiwrap{flex:1;min-width:0}
 .row2{display:flex;gap:9px;align-items:flex-start}
-.row2 .content{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start}
+.row2 .content{flex:1 1 0;min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:flex-start;overflow:hidden}
 .row2 .content>.bubble{align-self:flex-start}
 .row2 .content>.tools{align-self:stretch}
 .msg.user .row2 .bubble{max-width:100%}
@@ -714,7 +716,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 15:15';
+var APP_VERSION='2026-11-19 16:11';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1610,7 +1612,7 @@ function envContext(){
 async function webSearch(query){
   var base=(S.baseUrl||'').replace(/\/+$/,'');
   var url = /\/v1$/.test(base) ? base+'/tools/search' : base+'/v1/tools/search';
-  var res = await fetch(url, {
+  var res = await fetch(apiUrl(url), {
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
     body: JSON.stringify({query:String(query||'').slice(0,120), count:5, need_content:true})
@@ -1630,6 +1632,15 @@ async function webSearch(query){
   }).join('\n\n');
 }
 
+// 跨域代理：App 环境里非 DeepSeek 官方域名走本地代理，解决 CORS
+function apiUrl(u){
+  var port = window.__proxyPort;
+  if(!port) return u;
+  if(/^https?:\/\/api\.deepseek\.com/i.test(u)) return u;
+  if(/^http:\/\/127\.0\.0\.1/i.test(u)) return u;
+  return 'http://127.0.0.1:' + port + '/proxy?target=' + encodeURIComponent(u);
+}
+
 async function testApiKey(){
   syncInputs();
   var key = (S.apiKey||'').trim();
@@ -1638,7 +1649,7 @@ async function testApiKey(){
   var model = S.model || 'deepseek-chat';
   toast('测试中…');
   try{
-    var r = await fetch(base + '/chat/completions', {
+    var r = await fetch(apiUrl(base + '/chat/completions'), {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
       body: JSON.stringify({model:model, messages:[{role:'user',content:'hi'}], max_tokens:1, stream:false})
@@ -1760,7 +1771,7 @@ async function autoTitle(c){
     max_tokens: 256
   };
   try{
-    var res = await fetch(S.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
+    var res = await fetch(apiUrl(S.baseUrl.replace(/\/+$/,'')+'/chat/completions'),{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
       body: JSON.stringify(body)
@@ -1877,7 +1888,7 @@ async function send(text, retryIndex, skipPush){
     });
   }
   try{
-    var res=await fetch(S.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
+    var res=await fetch(apiUrl(S.baseUrl.replace(/\/+$/,'')+'/chat/completions'),{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
       body:JSON.stringify(body), signal:ac.signal
@@ -2978,7 +2989,7 @@ async function speak(text){
       if(!r2.ok) throw new Error('HTTP '+r2.status);
       src=URL.createObjectURL(new Blob([await r2.arrayBuffer()],{type:'audio/mpeg'}));
     } else {
-      var r3=await fetch(base+'/audio/speech',{method:'POST',
+      var r3=await fetch(apiUrl(base+'/audio/speech'),{method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},
         body:JSON.stringify({model:cfg.model||'tts-1',input:text,voice:cfg.voice||v.openai})});
       if(!r3.ok) throw new Error('HTTP '+r3.status);
