@@ -719,7 +719,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 18:54';
+var APP_VERSION='2026-11-19 21:00';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1563,12 +1563,17 @@ function readDoc(file){
       return;
     }
 
-    if(file.size>400*1024){ resolve({error:'文件超过 400KB'}); return; }
+    if(file.size>2*1024*1024){ resolve({error:'文件超过 2MB，建议拆分后再发'}); return; }
     var fr=new FileReader();
     fr.onload=function(){
       var txt=String(fr.result||'');
       if(/[\u0000-\u0008\u000E-\u001F]/.test(txt.slice(0,400))){ resolve({error:'这个格式读不了，试试另存为 txt 或 docx'}); return; }
-      resolve({text:txt.slice(0,120000)});
+      var LIMIT = 120000;
+      if(txt.length > LIMIT){
+        toast('文件较长，已截取前 12 万字（约 26 万 token 上限）');
+        txt = txt.slice(0, LIMIT);
+      }
+      resolve({text:txt});
     };
     fr.onerror=function(){ resolve({error:'读取失败'}); };
     fr.readAsText(file,'utf-8');
