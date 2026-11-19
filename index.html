@@ -719,7 +719,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 18:46';
+var APP_VERSION='2026-11-19 18:54';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3496,12 +3496,17 @@ function checkUpdate(manual){
       }
 
       if(!pageIsLatest){
-        // 页面是旧的：要么缓存，要么原生包旧 → 提示装 APK
-        showUpd(pending, true, '发现更新');
+        // 页面内容旧了：只提示更新内容，不给下载按钮（避免误解成必须重装）
+        showUpd(pending, false, '发现更新');
         return;
       }
-      if(pending.length && (manual || latestVer !== seen)){
-        showUpd(pending, false, manual ? '最近更新' : '更新内容');
+      // 网页有更新：每次弹一次，点「知道了」后不再弹
+      if(pending.length && latestVer !== seen){
+        showUpd(pending, false, '更新内容');
+        return;
+      }
+      if(pending.length && manual){
+        showUpd(pending, false, '最近更新');
         return;
       }
       if(manual) toast('已是最新版本  ' + APP_VERSION);
@@ -3516,10 +3521,6 @@ $('#updGo').addEventListener('click', function(){
   try{ window.open(APK_URL, '_blank'); }catch(e){ location.href = APK_URL; }
 });
 $('#updLater').addEventListener('click', function(){
-  localStorage.setItem('dsclone_seen_ver', latestVer || APP_VERSION);
-  $('#updMask').classList.remove('on');
-});
-$('#updX').addEventListener('click', function(){
   localStorage.setItem('dsclone_seen_ver', latestVer || APP_VERSION);
   $('#updMask').classList.remove('on');
 });
