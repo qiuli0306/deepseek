@@ -716,7 +716,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 16:11';
+var APP_VERSION='2026-11-19 17:05';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1612,7 +1612,7 @@ function envContext(){
 async function webSearch(query){
   var base=(S.baseUrl||'').replace(/\/+$/,'');
   var url = /\/v1$/.test(base) ? base+'/tools/search' : base+'/v1/tools/search';
-  var res = await fetch(apiUrl(url), {
+  var res = await apiFetch(url, {
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
     body: JSON.stringify({query:String(query||'').slice(0,120), count:5, need_content:true})
@@ -1632,13 +1632,33 @@ async function webSearch(query){
   }).join('\n\n');
 }
 
-// 跨域代理：App 环境里非 DeepSeek 官方域名走本地代理，解决 CORS
-function apiUrl(u){
+// 跨域代理：非 DeepSeek 官方域名走本地代理；Authorization 改名为 X-Target-Auth 规避浏览器限制
+function apiFetch(url, opts){
   var port = window.__proxyPort;
-  if(!port) return u;
-  if(/^https?:\/\/api\.deepseek\.com/i.test(u)) return u;
-  if(/^http:\/\/127\.0\.0\.1/i.test(u)) return u;
-  return 'http://127.0.0.1:' + port + '/proxy?target=' + encodeURIComponent(u);
+  var needProxy = port
+    && !/^https?:\/\/api\.deepseek\.com/i.test(url)
+    && !/^http:\/\/127\.0\.0\.1/i.test(url);
+  if(!needProxy) return fetch(url, opts);
+
+  var o = {};
+  for(var k in opts){ if(Object.prototype.hasOwnProperty.call(opts,k)) o[k] = opts[k]; }
+
+  var src = opts && opts.headers ? opts.headers : {};
+  var h = {};
+  var auth = null;
+  for(var hk in src){
+    if(!Object.prototype.hasOwnProperty.call(src,hk)) continue;
+    if(hk.toLowerCase()==='authorization'){ auth = src[hk]; }
+    else { h[hk] = src[hk]; }
+  }
+  if(auth) h['X-Target-Auth'] = auth;
+  o.headers = h;
+
+  return fetch('http://127.0.0.1:'+port+'/proxy?target='+encodeURIComponent(url), o)
+    .catch(function(){
+      // 代理层失败（网络/端口异常）→ 回退直连，保证能聊
+      return fetch(url, opts);
+    });
 }
 
 async function testApiKey(){
@@ -1649,7 +1669,7 @@ async function testApiKey(){
   var model = S.model || 'deepseek-chat';
   toast('测试中…');
   try{
-    var r = await fetch(apiUrl(base + '/chat/completions'), {
+    var r = await apiFetch(base + '/chat/completions', {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
       body: JSON.stringify({model:model, messages:[{role:'user',content:'hi'}], max_tokens:1, stream:false})
@@ -1771,7 +1791,7 @@ async function autoTitle(c){
     max_tokens: 256
   };
   try{
-    var res = await fetch(apiUrl(S.baseUrl.replace(/\/+$/,'')+'/chat/completions'),{
+    var res = await apiFetch(S.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
       body: JSON.stringify(body)
@@ -1888,7 +1908,7 @@ async function send(text, retryIndex, skipPush){
     });
   }
   try{
-    var res=await fetch(apiUrl(S.baseUrl.replace(/\/+$/,'')+'/chat/completions'),{
+    var res=await apiFetch(S.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
       body:JSON.stringify(body), signal:ac.signal
@@ -2989,7 +3009,7 @@ async function speak(text){
       if(!r2.ok) throw new Error('HTTP '+r2.status);
       src=URL.createObjectURL(new Blob([await r2.arrayBuffer()],{type:'audio/mpeg'}));
     } else {
-      var r3=await fetch(apiUrl(base+'/audio/speech'),{method:'POST',
+      var r3=await apiFetch(base+'/audio/speech',{method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},
         body:JSON.stringify({model:cfg.model||'tts-1',input:text,voice:cfg.voice||v.openai})});
       if(!r3.ok) throw new Error('HTTP '+r3.status);
