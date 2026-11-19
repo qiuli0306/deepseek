@@ -53,7 +53,7 @@ body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62
 button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;font-size:inherit}
 input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .app{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;
-  padding-top:var(--sbh,env(safe-area-inset-top,0px));
+  padding-top:var(--sbh,var(--safe-t,env(safe-area-inset-top,0px)));
   background:transparent;background-size:cover;background-position:center}
 .main{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
 
@@ -251,7 +251,7 @@ body[data-theme="dark"] .mask{background:rgba(0,0,0,.5)}
 .drawer{position:fixed;top:0;bottom:0;left:0;width:85%;max-width:340px;z-index:50;background:var(--bg);
   display:flex;flex-direction:column;transform:translateX(-102%);
   transition:transform .25s cubic-bezier(.32,.72,0,1);
-  padding-top:calc(var(--sbh,0px) + 6px);padding-bottom:var(--safe-b);box-shadow:4px 0 24px rgba(0,0,0,.18)}
+  padding-top:calc(var(--sbh,var(--safe-t,0px)) + 6px);padding-bottom:var(--safe-b);box-shadow:4px 0 24px rgba(0,0,0,.18)}
 body[data-theme="light"] .drawer{background:#fff}
 .drawer.on{transform:none}
 .drawer-head{padding:12px 12px 8px}
@@ -284,7 +284,7 @@ body[data-theme="light"] .item.on{background:#e8edff;color:#2f49d9}
 .chk.on{background:var(--blue);border-color:var(--blue)}
 
 /* 页面 */
-.page{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding-top:var(--sbh,0px);
+.page{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding-top:var(--sbh,var(--safe-t,0px));
   transform:translateX(100%);transition:transform .25s cubic-bezier(.32,.72,0,1)}
 .page.on{transform:none}
 .page.sub{z-index:70}
@@ -719,7 +719,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 21:00';
+var APP_VERSION='2026-11-19 22:50';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3040,8 +3040,27 @@ function exportText(onlyCurrent){
   if(!list.length){ toast('没有可导出的对话'); return; }
   var txt = list.map(convToText).join('\n\n' + '─'.repeat(20) + '\n\n');
   var inWebView = /wv\)/.test(navigator.userAgent);
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  // iOS：下载不被支持，走系统分享
+  if(isIOS && navigator.share){
+    try{
+      var file = null;
+      try{
+        file = new File([txt], (list[0].title||'对话')+'.txt', {type:'text/plain'});
+      }catch(e){ file = null; }
+      var shareData = file && navigator.canShare && navigator.canShare({files:[file]})
+        ? {files:[file], title:(list[0].title||'对话')}
+        : {text: txt, title:(list[0].title||'对话')};
+      navigator.share(shareData).then(function(){ toast('已分享'); })
+        .catch(function(){ copyText(txt); toast('已复制全文'); });
+      return;
+    }catch(e){ /* 落到复制 */ }
+  }
+
   try{
-    if(!inWebView){
+    if(!inWebView && !isIOS){
       var blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
       var a=document.createElement('a');
       a.href=URL.createObjectURL(blob);
@@ -3418,6 +3437,27 @@ async function initCustomFonts(){
   toast('自定义字体「'+n+'」加载失败，可到 设置→个性化→字体 重新选择');
   applyFont();
 }
+
+/* ================= iOS 提示 ================= */
+(function(){
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if(!isIOS) return;
+  var standalone = window.navigator.standalone === true ||
+                   window.matchMedia('(display-mode: standalone)').matches;
+  if(standalone) return;
+  if(localStorage.getItem('dsclone_ios_tip')) return;
+
+  setTimeout(function(){
+    $('#dlgTitle').textContent = '建议添加到主屏幕';
+    $('#dlgText').innerHTML =
+      '点底部的「分享」按钮 → 选择「添加到主屏幕」<br><br>' +
+      '这样打开是全屏的，而且<b>聊天记录不会因为 7 天没用而被系统清除</b>。<br><br>' +
+      '不添加也能用，但记录可能会丢。';
+    $('#dlgMask').classList.add('on');
+    localStorage.setItem('dsclone_ios_tip','1');
+  }, 1500);
+})();
 
 /* ================= 版本检查 ================= */
 var APK_URL = 'https://qiuli0306.github.io/deepseek/deepseek.apk';
