@@ -76,8 +76,8 @@ input,textarea{font-family:inherit;color:inherit;font-size:inherit}
 .welcome p{margin:10px 0 0;color:var(--fg2);font-size:14.5px}
 
 /* 消息 */
-.msgs{padding:18px 0 26px}
-.msg{margin-bottom:28px}
+.msgs{padding:18px 16px 26px}
+.msg{margin-bottom:28px;max-width:100%;overflow-wrap:break-word;word-break:break-word}
 .msg.user{display:flex;justify-content:flex-end}
 .bubble{font-size:calc(15.5px * var(--fs));word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
 .msg.user .bubble{max-width:86%;background:var(--bubble-user);border-radius:18px 18px 5px 18px;padding:9px 14px;
@@ -714,7 +714,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 15:08';
+var APP_VERSION='2026-11-19 15:15';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
