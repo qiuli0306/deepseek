@@ -420,6 +420,24 @@ body[data-theme="light"] .dialog{background:#fff}
 .legal p{margin:0 0 10px}
 .legal strong{color:var(--fg)}
 
+.edit-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:95;display:none}
+.edit-mask.on{display:block}
+.editpanel{position:fixed;left:0;right:0;bottom:0;z-index:96;background:var(--bg);
+  border-radius:20px 20px 0 0;box-shadow:0 -6px 28px #0002;padding:12px 14px calc(12px + var(--safe-b));
+  transform:translateY(112%);transition:transform .24s cubic-bezier(.32,.72,0,1)}
+.editpanel.on{transform:none}
+.ep-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:14px;color:var(--fg2)}
+.ep-head button{width:28px;height:28px;border-radius:50%;background:var(--card2);color:var(--fg2);font-size:13px}
+.ep-imgs{display:none;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ep-img{position:relative;display:inline-block}
+.ep-img img{width:72px;height:72px;object-fit:cover;border-radius:10px;display:block}
+.ep-img button{position:absolute;top:-5px;right:-5px;width:20px;height:20px;border-radius:50%;
+  background:#000a;color:#fff;font-size:11px;line-height:20px;text-align:center}
+.editpanel textarea{width:100%;min-height:80px;max-height:34vh;background:var(--card2);border:0;border-radius:14px;
+  padding:12px 14px;font-size:16px;line-height:1.55;color:var(--fg);resize:none;outline:none}
+.ep-bar{display:flex;align-items:center;gap:10px;margin-top:10px}
+.ep-add{width:42px;height:42px;border-radius:50%;background:var(--card2);color:var(--fg);font-size:20px;flex:0 0 auto}
+.ep-send{flex:1;height:42px;border-radius:21px;background:var(--blue);color:#fff;font-size:15px;font-weight:600}
 .cropper{position:fixed;inset:0;z-index:95;background:#000;display:none;flex-direction:column}
 .cropper.on{display:flex}
 .crop-stage{flex:1;position:relative;overflow:hidden;touch-action:none}
@@ -621,7 +639,20 @@ body[data-theme="light"] .toast{background:#222c}
     </div>
   </div>
 
-  <div class="cropper" id="cropper">
+  <div class="edit-mask" id="editMask"></div>
+<div class="editpanel" id="editPanel">
+  <div class="ep-head">
+    <span>修改输入</span>
+    <button id="epClose">✕</button>
+  </div>
+  <div class="ep-imgs" id="epImgs"></div>
+  <textarea id="epTa" placeholder="输入内容"></textarea>
+  <div class="ep-bar">
+    <button class="ep-add" id="epAddImg">＋</button>
+    <button class="ep-send" id="epSend">发送</button>
+  </div>
+</div>
+<div class="cropper" id="cropper">
   <div class="crop-stage" id="cropStage">
     <img id="cropImg" alt="">
     <div class="crop-frame" id="cropFrame"></div>
@@ -746,7 +777,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-20 18:29';
+var APP_VERSION='2026-11-20 18:39';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1224,68 +1255,98 @@ function openAiMenu(idx, px, py){
 }
 
 /* ================= 修改已发送的消息 ================= */
+/* ================= 修改已发送消息（底部面板，跟随键盘） ================= */
+var _editIdx = -1, _editImgs = [];
+
 function openEditBox(idx){
   var c=cur(); if(!c) return;
   var m=c.msgs[idx]; if(!m || m.role!=='user') return;
-  var old = m.content || '';
-  var mask=$('#dlgMask'), box=$('#dlgTitle'), txt=$('#dlgText');
-  $('#dlgTitle').textContent='修改输入';
-  var editImgs = (m.images || []).slice();
-  function imgRow(){
-    if(!editImgs.length) return '';
-    return '<div id="editImgs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
-      editImgs.map(function(src, i){
-        return '<span style="position:relative;display:inline-block">'+
-          '<img src="'+src+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px">'+
-          '<button data-delimg="'+i+'" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#000a;color:#fff;font-size:11px;line-height:18px;text-align:center">✕</button>'+
-        '</span>';
-      }).join('')+
-    '</div>';
-  }
-  $('#dlgText').innerHTML =
-    imgRow()+
-    '<textarea id="editTa" style="width:100%;min-height:90px;background:var(--card2);border:0;border-radius:12px;'+
-    'padding:12px;font-size:15px;line-height:1.6;color:var(--fg);resize:none;outline:none">'+esc(old)+'</textarea>'+
-    '<div style="display:flex;gap:8px;margin-top:10px">'+
-      '<button id="editAddImg" class="btn" style="margin:0;padding:10px;font-size:14px">＋图片</button>'+
-    '</div>'+
-    '<div style="display:flex;gap:8px;margin-top:8px">'+
-      '<button id="editCancel" class="btn" style="margin:0;flex:1">取消</button>'+
-      '<button id="editOk" class="btn primary" style="margin:0;flex:1">发送</button>'+
-    '</div>';
-  setTimeout(function(){
-    var addBtn = $('#editAddImg');
-    if(addBtn) addBtn.onclick = function(){
-      var inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*';
-      inp.onchange = async function(){
-        var f = inp.files && inp.files[0];
-        if(!f) return;
-        var d = await readImage(f);
-        if(d){ editImgs.push(d); $('#dlgText').innerHTML = $('#dlgText').innerHTML; }
-      };
-      inp.click();
-    };
-    var box = $('#editImgs');
-    if(box) box.addEventListener('click', function(ev){
-      var b = ev.target.closest('[data-delimg]');
-      if(!b) return;
-      editImgs.splice(+b.dataset.delimg, 1);
-      b.parentElement.remove();
-    });
-  }, 60);
-  mask.classList.add('on');
-  var ta=$('#editTa');
-  setTimeout(function(){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 60);
+  _editIdx = idx;
+  _editImgs = (m.images || []).slice();
 
-  $('#editCancel').onclick=function(){ mask.classList.remove('on'); };
-  $('#editOk').onclick=function(){
-    var val=ta.value.trim();
-    if(!val && !editImgs.length){ toast('内容和图片不能都为空'); return; }
-    mask.classList.remove('on');
-    applyEdit(idx, val, editImgs);
-  };
+  $('#epTa').value = m.content || '';
+  renderEditImgs();
+  $('#editPanel').classList.add('on');
+  $('#editMask').classList.add('on');
+  pushLayer('edit');
+  setTimeout(function(){
+    var ta = $('#epTa');
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    syncEditPanelToKeyboard();
+  }, 60);
 }
+
+function renderEditImgs(){
+  var box = $('#epImgs');
+  if(!_editImgs.length){ box.innerHTML = ''; box.style.display='none'; return; }
+  box.style.display = 'flex';
+  box.innerHTML = _editImgs.map(function(src, i){
+    return '<span class="ep-img"><img src="'+src+'"><button data-epdel="'+i+'">✕</button></span>';
+  }).join('');
+}
+
+function closeEditBox(){
+  $('#editPanel').classList.remove('on');
+  $('#editMask').classList.remove('on');
+  $('#epTa').blur();
+  _editIdx = -1; _editImgs = [];
+}
+
+function syncEditPanelToKeyboard(){
+  var panel = $('#editPanel');
+  if(!panel) return;
+  var vv = window.visualViewport;
+  if(!vv) { panel.style.bottom = '0px'; return; }
+  var kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  panel.style.bottom = kb + 'px';
+}
+
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', syncEditPanelToKeyboard);
+  window.visualViewport.addEventListener('scroll', syncEditPanelToKeyboard);
+}
+
+(function(){
+  var addBtn = $('#epAddImg');
+  if(addBtn) addBtn.addEventListener('click', function(){
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async function(){
+      var f = inp.files && inp.files[0];
+      if(!f) return;
+      var d = await readImage(f);
+      if(!d) return;
+      _editImgs.push(d);
+      renderEditImgs();
+      toast('已添加');
+    };
+    inp.click();
+  });
+
+  var imgBox = $('#epImgs');
+  if(imgBox) imgBox.addEventListener('click', function(e){
+    var b = e.target.closest('[data-epdel]');
+    if(!b) return;
+    _editImgs.splice(+b.dataset.epdel, 1);
+    renderEditImgs();
+  });
+
+  var sendBtn = $('#epSend');
+  if(sendBtn) sendBtn.addEventListener('click', function(){
+    var val = $('#epTa').value.trim();
+    if(!val && !_editImgs.length){ toast('内容和图片不能都为空'); return; }
+    var idx = _editIdx, imgs = _editImgs.slice();
+    closeEditBox();
+    applyEdit(idx, val, imgs);
+  });
+
+  var closeBtn = $('#epClose');
+  if(closeBtn) closeBtn.addEventListener('click', closeEditBox);
+
+  var maskEl = $('#editMask');
+  if(maskEl) maskEl.addEventListener('click', closeEditBox);
+})();
 
 function applyEdit(idx, newText, newImgs){
   var c=cur(); if(!c) return;
@@ -4041,6 +4102,8 @@ setTimeout(function(){ checkUpdate(false); }, 2500);
 window.addEventListener('popstate', function(){
   var vw=$('#viewer');
   if(vw && vw.classList.contains('on')){ closeViewer(); return; }
+  var ep=$('#editPanel');
+  if(ep && ep.classList.contains('on')){ closeEditBox(); return; }
   var sub=$('#pageSub'), main=$('#pageMain'), dr=$('#drawer');
   if(sub && sub.classList.contains('on')){ syncInputs(); sub.classList.remove('on'); renderSettings(); return; }
   if(main && main.classList.contains('on')){ main.classList.remove('on'); return; }
