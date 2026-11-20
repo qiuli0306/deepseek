@@ -30,7 +30,7 @@ body[data-theme="light"]{
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden}
-#bgLayer{position:fixed;inset:0;z-index:0;pointer-events:none;
+#bgLayer{position:fixed;top:0;left:0;right:0;bottom:0;z-index:0;pointer-events:none;
   background:var(--bg-img,none) center/cover no-repeat;
   background-color:var(--bg-color,transparent);
   opacity:var(--bg-alpha,1);
@@ -52,7 +52,7 @@ body{background:var(--chat-bg);color:var(--fg);font-size:16.5px;line-height:1.62
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;font-size:inherit}
 input,textarea{font-family:inherit;color:inherit;font-size:inherit}
-.app{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;
+.app{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;
   padding-top:var(--sbh,var(--safe-t,env(safe-area-inset-top,0px)));
   background:transparent;background-size:cover;background-position:center}
 .main{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
@@ -245,7 +245,7 @@ body[data-theme="light"] .code code{color:#1f2937}
 .footnote{text-align:center;font-size:11px;color:var(--fg3);padding:6px 0 2px}
 
 /* 抽屉 */
-.mask{position:fixed;inset:0;background:rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
+.mask{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
 .mask.on{opacity:1;pointer-events:auto}
 body[data-theme="dark"] .mask{background:rgba(0,0,0,.5)}
 .drawer{position:fixed;top:0;bottom:0;left:0;width:85%;max-width:340px;z-index:50;background:var(--bg);
@@ -284,7 +284,7 @@ body[data-theme="light"] .item.on{background:#e8edff;color:#2f49d9}
 .chk.on{background:var(--blue);border-color:var(--blue)}
 
 /* 页面 */
-.page{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding-top:var(--sbh,var(--safe-t,0px));
+.page{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding-top:var(--sbh,var(--safe-t,0px));
   transform:translateX(100%);transition:transform .25s cubic-bezier(.32,.72,0,1)}
 .page.on{transform:none}
 .page.sub{z-index:70}
@@ -326,7 +326,7 @@ body[data-theme="light"] .chatstyle button{background:#fff}
 .colorwrap .lbl{font-size:13px;color:var(--fg2)}
 
 /* 朗读音色 */
-.voicepage{position:fixed;inset:0;z-index:75;background:var(--bg);display:flex;flex-direction:column;
+.voicepage{position:fixed;top:0;left:0;right:0;bottom:0;z-index:75;background:var(--bg);display:flex;flex-direction:column;
   opacity:0;pointer-events:none;transform:scale(.96);transition:opacity .12s,transform .12s;transition:transform .28s cubic-bezier(.32,.72,0,1)}
 .voicepage.on{transform:none}
 .voice-h{height:56px;display:flex;align-items:center;padding:0 12px;padding-top:var(--safe-t)}
@@ -352,7 +352,7 @@ body[data-theme="light"] .vblob{box-shadow:inset -12px -14px 34px rgba(120,150,1
 .voice-foot .btn{margin:0;width:100%}
 
 /* 附件面板（官方样式） */
-.sheet-mask{position:fixed;inset:0;background:#000b;opacity:0;pointer-events:none;transition:opacity .2s;z-index:80}
+.sheet-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:#000b;opacity:0;pointer-events:none;transition:opacity .2s;z-index:80}
 .sheet-mask.on{opacity:1;pointer-events:auto}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:81;background:var(--bg);
   border-radius:18px 18px 0 0;padding:14px 14px calc(14px + var(--safe-b));
@@ -388,7 +388,7 @@ body[data-theme="light"] .sheet-cancel{background:#fff}
 .aimenu svg{width:18px;height:18px;flex:0 0 auto;color:var(--fg2)}
 
 /* 会话菜单 */
-.convmenu-mask{position:fixed;inset:0;background:#0009;opacity:0;pointer-events:none;transition:opacity .18s;z-index:85}
+.convmenu-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:#0009;opacity:0;pointer-events:none;transition:opacity .18s;z-index:85}
 .convmenu-mask.on{opacity:1;pointer-events:auto}
 .convmenu{position:fixed;left:50%;top:50%;width:264px;background:var(--card);border-radius:14px;overflow:hidden;
   z-index:86;opacity:0;pointer-events:none;transform:translate(-50%,-50%) scale(.94);
@@ -420,7 +420,7 @@ body[data-theme="light"] .dialog{background:#fff}
 .legal p{margin:0 0 10px}
 .legal strong{color:var(--fg)}
 
-.edit-mask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:95;display:none}
+.edit-mask{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.28);z-index:95;display:none}
 .edit-mask.on{display:block}
 .editpanel{position:fixed;left:0;right:0;bottom:0;z-index:96;background:var(--bg);
   border-radius:20px 20px 0 0;box-shadow:0 -6px 28px #0002;padding:12px 14px calc(12px + var(--safe-b));
@@ -438,16 +438,16 @@ body[data-theme="light"] .dialog{background:#fff}
 .ep-bar{display:flex;align-items:center;gap:10px;margin-top:10px}
 .ep-add{width:42px;height:42px;border-radius:50%;background:var(--card2);color:var(--fg);font-size:20px;flex:0 0 auto}
 .ep-send{flex:1;height:42px;border-radius:21px;background:var(--blue);color:#fff;font-size:15px;font-weight:600}
-.cropper{position:fixed;inset:0;z-index:95;background:#000;display:none;flex-direction:column}
+.cropper{position:fixed;top:0;left:0;right:0;bottom:0;z-index:95;background:#000;display:none;flex-direction:column}
 .cropper.on{display:flex}
 .crop-stage{flex:1;position:relative;overflow:hidden;touch-action:none}
 .crop-stage img{position:absolute;left:50%;top:50%;transform-origin:center center;will-change:transform;max-width:none}
-.crop-mask{position:absolute;inset:0;pointer-events:none}
+.crop-mask{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none}
 .crop-frame{position:absolute;border:1.5px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.62);pointer-events:none}
 .crop-bar{display:flex;gap:10px;padding:14px 16px calc(14px + var(--safe-b));background:#0d0d0d}
 .crop-bar button{flex:1;padding:12px;border-radius:12px;font-size:15px;color:#fff;background:#ffffff1f}
 .crop-bar button.primary{background:#4d6bfe;font-weight:600}
-.viewer{position:fixed;inset:0;z-index:90;background:#000;display:none;flex-direction:column}
+.viewer{position:fixed;top:0;left:0;right:0;bottom:0;z-index:90;background:#000;display:none;flex-direction:column}
 .viewer.on{display:flex}
 .vw-bar{position:absolute;top:0;left:0;right:0;z-index:3;display:flex;align-items:center;justify-content:space-between;
   padding:calc(var(--safe-t,0px) + 10px) 16px 10px;color:#fff;font-size:14px;pointer-events:none}
@@ -777,7 +777,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-20 18:39';
+var APP_VERSION='2026-11-21 00:11';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3959,6 +3959,42 @@ async function initCustomFonts(){
   // 二次失败：保留选择，明确提示，不擅自改回系统默认
   toast('自定义字体「'+n+'」加载失败，可到 设置→个性化→字体 重新选择');
   applyFont();
+}
+
+/* ================= 屏幕诊断（URL 加 ?diag=1） ================= */
+if(location.search.indexOf('diag=1') >= 0){
+  window.addEventListener('load', function(){
+    setTimeout(function(){
+      var app = document.querySelector('.app');
+      var hdr = document.querySelector('.header');
+      var comp = document.querySelector('.composer');
+      var bar = document.querySelector('.inputbar') || comp;
+      function box(el){
+        if(!el) return '未找到';
+        var r = el.getBoundingClientRect();
+        return Math.round(r.width)+'×'+Math.round(r.height)+' @('+Math.round(r.left)+','+Math.round(r.top)+')';
+      }
+      var lines = [
+        '窗口: ' + window.innerWidth + '×' + window.innerHeight,
+        '设备像素比: ' + (window.devicePixelRatio||1),
+        '可视区: ' + (window.visualViewport ? Math.round(window.visualViewport.width)+'×'+Math.round(window.visualViewport.height) : '不支持'),
+        '屏幕: ' + screen.width + '×' + screen.height,
+        '',
+        '.app: ' + box(app),
+        '.header: ' + box(hdr),
+        '.composer: ' + box(comp),
+        '输入条: ' + box(bar),
+        '',
+        'innerWidth 是否等于 屏幕宽: ' + (window.innerWidth === screen.width ? '是' : '否'),
+        '支持 inset: ' + (CSS.supports ? CSS.supports('inset','0') : '未知'),
+        'UA: ' + navigator.userAgent.slice(0,140)
+      ];
+      var d = document.createElement('div');
+      d.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:#fff;color:#000;padding:20px;font-size:14px;line-height:1.9;white-space:pre-wrap;word-break:break-all;overflow:auto';
+      d.textContent = lines.join('\n');
+      document.body.appendChild(d);
+    }, 900);
+  });
 }
 
 /* ================= iOS 提示 ================= */
