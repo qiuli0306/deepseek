@@ -719,7 +719,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-19 22:50';
+var APP_VERSION='2026-11-20 15:26';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1720,7 +1720,7 @@ function envContext(){
 }
 
 async function webSearch(query){
-  var base=(S.baseUrl||'').replace(/\/+$/,'');
+  var base=cleanAscii(S.baseUrl||'').replace(/\/+$/,'') || 'https://api.deepseek.com';
   var url = /\/v1$/.test(base) ? base+'/tools/search' : base+'/v1/tools/search';
   var res = await apiFetch(url, {
     method:'POST',
@@ -1729,7 +1729,7 @@ async function webSearch(query){
   });
   if(!res.ok){
     var t=''; try{ t=await res.text(); }catch(e){}
-    throw new Error('HTTP '+res.status+' '+t.slice(0,120));
+    throw new Error(humanError(res.status, t));
   }
   var j = await res.json();
   var list = j.results||j.data||j.items||j.documents||j.list||[];
@@ -1743,7 +1743,28 @@ async function webSearch(query){
 }
 
 // 跨域代理：非 DeepSeek 官方域名走本地代理；Authorization 改名为 X-Target-Auth 规避浏览器限制
+// 清理混进 API Key / URL 里的非 ASCII 字符（全角空格、零宽字符、中文标点等）
+function cleanAscii(str){
+  return String(str||'')
+    .replace(/[\u200B-\u200F\uFEFF\u00A0\u3000]/g, '')  // 零宽/不间断/全角空格
+    .replace(/[^\x20-\x7E]/g, '')                          // 其余非 ASCII 一律去掉
+    .trim();
+}
+
 function apiFetch(url, opts){
+  // 统一清理请求头里的非法字符，避免 fetch 直接抛错
+  if(opts && opts.headers){
+    var h0 = {};
+    for(var k0 in opts.headers){
+      if(!Object.prototype.hasOwnProperty.call(opts.headers,k0)) continue;
+      var v0 = opts.headers[k0];
+      h0[k0] = (typeof v0 === 'string') ? cleanAscii(v0) : v0;
+    }
+    var o0 = {};
+    for(var q in opts){ if(Object.prototype.hasOwnProperty.call(opts,q)) o0[q] = opts[q]; }
+    o0.headers = h0;
+    opts = o0;
+  }
   var port = window.__proxyPort;
   var needProxy = port
     && !/^https?:\/\/api\.deepseek\.com/i.test(url)
@@ -1788,11 +1809,64 @@ async function testApiKey(){
     var txt=''; try{ txt = await r.text(); }catch(e){}
     if(r.status===401) toast('Key 无效，请重新复制 ❌');
     else if(r.status===402) toast('余额不足，请充值 ❌');
-    else if(r.status===404) toast('模型名或地址不对 ❌');
+    else if(r.status===403) toast('Key 没有这个模型的权限 ❌');
+    else if(r.status===404) toast('地址或模型名不对 ❌');
+    else if(r.status===429) toast('请求太频繁，稍后再试');
     else toast('失败 '+r.status+'：'+txt.slice(0,60));
   }catch(e){
-    toast('网络失败：无法连接 Base URL');
+    var msg = String((e&&e.message)||'');
+    if(msg.indexOf('non ISO-8859-1')>=0) toast('Key 里有中文/全角字符，重新粘贴一次');
+    else toast('连不上服务器，检查 Base URL 和网络');
   }
+}
+
+// 把各种 API 报错翻译成人话
+function humanError(status, raw){
+  var r = String(raw||'');
+  var low = r.toLowerCase();
+
+  // 内容风控
+  if(low.indexOf('content exists risk')>=0 || low.indexOf('content_risk')>=0){
+    return '内容被平台判定为敏感，已拦截。\n· 试着删掉可能踩线的段落，或拆成几段分开发\n· 用第三方中转接口通常没有这层限制';
+  }
+  if(low.indexOf('content filter')>=0 || low.indexOf('moderation')>=0){
+    return '内容触发了平台的审核，换个说法试试';
+  }
+
+  // 余额
+  if(status===402 || low.indexOf('insufficient balance')>=0 || low.indexOf('insufficient_quota')>=0){
+    return '账户余额不足，请到服务商后台充值';
+  }
+
+  // 鉴权
+  if(status===401){
+    if(low.indexOf('invalid')>=0) return 'API Key 无效，请重新复制（注意别带空格）';
+    return 'API Key 未通过验证，检查 Key 是否正确、是否已失效';
+  }
+  if(status===403){
+    return '没有权限访问这个模型，检查 Key 的权限或模型名';
+  }
+
+  // 模型/路径
+  if(status===404){
+    return '找不到接口或模型。\n· Base URL 应该填到 /v1 为止，不要带 /chat/completions\n· 模型名要和后台列表一致';
+  }
+  if(status===400){
+    if(low.indexOf('model')>=0) return '模型名不对，请核对服务商的模型列表';
+    if(low.indexOf('context')>=0 || low.indexOf('too long')>=0 || low.indexOf('maximum')>=0){
+      return '对话太长了，超出模型上限。\n· 开一个新对话，或删掉一些旧消息';
+    }
+    return '请求参数有问题：'+r.slice(0,100);
+  }
+
+  // 限流 / 服务端
+  if(status===429) return '请求太频繁，被限流了。等几十秒再发';
+  if(status===500 || status===502 || status===503 || status===504){
+    return '服务商那边出问题了（'+status+'），稍后重试；如果一直这样，可能是中转站挂了';
+  }
+
+  if(status) return '请求失败（HTTP '+status+'）：'+r.slice(0,120);
+  return r.slice(0,160);
 }
 
 function buildMessages(c){
@@ -2027,7 +2101,9 @@ async function send(text, retryIndex, skipPush){
       var d='';
       try{ var j=await res.json(); d=(j.error&&j.error.message)||JSON.stringify(j); }
       catch(e){ d=await res.text().catch(function(){return '';}); }
-      throw new Error('HTTP '+res.status+' '+d);
+      var e2 = new Error(humanError(res.status, d));
+      e2._friendly = true;
+      throw e2;
     }
     var reader=res.body.getReader(), dec=new TextDecoder('utf-8'), buf='';
     while(true){
@@ -2051,8 +2127,11 @@ async function send(text, retryIndex, skipPush){
   }catch(err){
     if(err&&err.name==='AbortError'){ if(!ai.content) ai.content=t('stop'); }
     else{
-      var m=String((err&&err.message)||'error');
-      if(m.indexOf('Failed to fetch')>=0) m='网络请求失败，请检查网络与 Base URL';
+      var m = (err && err._friendly) ? String(err.message) : String((err&&err.message)||'error');
+      if(!(err && err._friendly)){
+        if(m.indexOf('Failed to fetch')>=0) m='网络连不上服务器。\n· 检查网络\n· 确认 Base URL 写对了\n· 有些中转站不允许网页直接调用（跨域），可换用支持的服务商';
+        else if(m.indexOf('non ISO-8859-1')>=0) m='Key 或地址里混进了中文/全角字符，请重新粘贴一次';
+      }
       ai.content += (ai.content?'\n\n':'')+'请求失败：'+m;
     }
   }finally{
@@ -2848,7 +2927,7 @@ function subData(){
 }
 function syncInputs(){
   if($('#mKey')){
-    S.apiKey=$('#mKey').value.trim();
+    S.apiKey=cleanAscii($('#mKey').value);
     S.baseUrl=$('#mBase').value.trim()||DEF.baseUrl;
     S.provider=/api\.deepseek\.com/.test(S.baseUrl)?'deepseek':'custom';
     S.model=$('#mModel').value.trim()||DEF.model||'deepseek-flash';
