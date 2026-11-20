@@ -719,7 +719,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-20 15:26';
+var APP_VERSION='2026-11-20 16:49';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1877,8 +1877,6 @@ function buildMessages(c){
     : ((S.unlockOn!==false) ? UNLOCK_PROMPT : '');
   if(_sys) arr.push({role:'system',content:_sys});
   var hint=langHint();
-  var env=envContext();
-  if(env) arr.push({role:'system',content:env+'（以上是真实环境信息，回答涉及时间、日期、星期时以此为准）'});
   if(hint) arr.push({role:'system',content:hint});
   if(S.chatStyle==='bubble'){
     arr.push({role:'system',content:
@@ -1903,6 +1901,21 @@ function buildMessages(c){
       arr.push({role:'assistant',content:m.content});
     }
   });
+  // 环境信息放到最后一条用户消息末尾：前面所有内容保持稳定，缓存才能命中
+  var env = envContext();
+  if(env){
+    for(var _ei = arr.length - 1; _ei >= 0; _ei--){
+      if(arr[_ei].role === 'user'){
+        var suffix = '\n\n' + env + '（以上是真实环境信息，回答涉及时间、日期、星期时以此为准）';
+        if(typeof arr[_ei].content === 'string'){
+          arr[_ei].content += suffix;
+        } else if(Array.isArray(arr[_ei].content)){
+          arr[_ei].content.push({type:'text', text:suffix});
+        }
+        break;
+      }
+    }
+  }
   return arr;
 }
 function splitSentences(text){
