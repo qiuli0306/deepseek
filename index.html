@@ -777,7 +777,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-21 01:27';
+var APP_VERSION='2026-11-21 15:22';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1876,6 +1876,220 @@ async function inflateAny(data){
     }catch(e){ /* 内核不支持，降级到 JS 实现 */ }
   }
   return inflateRaw(data).buffer;
+}
+
+// 列出 zip 里的所有条目
+function zipList(buf){
+  var dv = new DataView(buf), len = buf.byteLength;
+  var eocd = -1;
+  for(var i = len - 22; i >= Math.max(0, len - 66000); i--){
+    if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  }
+  if(eocd < 0) throw new Error('不是有效的 zip 文件');
+  var cdCount = dv.getUint16(eocd + 10, true);
+  var cdOff = dv.getUint32(eocd + 16, true);
+  var list = [], p = cdOff;
+  for(var k = 0; k < cdCount; k++){
+    if(dv.getUint32(p, true) !== 0x02014b50) break;
+    var method = dv.getUint16(p + 10, true);
+    var compSize = dv.getUint32(p + 20, true);
+    var nameLen = dv.getUint16(p + 28, true);
+    var extraLen = dv.getUint16(p + 30, true);
+    var cmtLen = dv.getUint16(p + 32, true);
+    var lho = dv.getUint32(p + 42, true);
+    var name = new TextDecoder('utf-8').decode(new Uint8Array(buf, p + 46, nameLen));
+    list.push({name: name, method: method, compSize: compSize, lho: lho});
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+  return list;
+}
+
+// 读取 zip 里某个条目的原始字节
+async function zipRead(buf, entry){
+  var dv = new DataView(buf);
+  var lNameLen = dv.getUint16(entry.lho + 26, true);
+  var lExtraLen = dv.getUint16(entry.lho + 28, true);
+  var start = entry.lho + 30 + lNameLen + lExtraLen;
+  var data = new Uint8Array(buf, start, entry.compSize);
+  if(entry.method === 0) return data;
+  if(entry.method === 8){
+    var out = await inflateAny(data);
+    return new Uint8Array(out);
+  }
+  throw new Error('不支持的压缩方式');
+}
+
+function bytesToBase64(bytes){
+  var bin = '', CH = 0x8000;
+  for(var i = 0; i < bytes.length; i += CH){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  }
+  return btoa(bin);
+}
+
+// 把 DeepSeek 官方导出的会话 json 转成我们的结构
+function dsSessionToConv(obj){
+  var msgs = [], i, j;
+  var list = obj.messages || obj.chat_messages || [];
+  for(i = 0; i < list.length; i++){
+    var m = list[i];
+    var role = (m.role || '').toUpperCase();
+    var frags = m.fragments || [];
+    var text = '', think = '', thinkSec = 0, imgs = [];
+    for(j = 0; j < frags.length; j++){
+      var f = frags[j];
+      var t = (f.type || '').toUpperCase();
+      if(t === 'THINK'){ think += (f.content || ''); if(f.elapsed_secs) thinkSec = Math.round(f.elapsed_secs); }
+      else if(t === 'RESPONSE' || t === 'REQUEST' || t === 'TEXT'){ text += (f.content || ''); }
+      else if(t === 'SEARCH_RESULT' || t === 'SEARCH'){ /* 跳过搜索结果 */ }
+      else if(f.content && typeof f.content === 'string'){ text += f.content; }
+    }
+    if(!text && typeof m.content === 'string') text = m.content;
+
+    if(role === 'USER'){
+      msgs.push({role:'user', content:text});
+    } else if(role === 'ASSISTANT'){
+      var mm = {role:'ai', content:text};
+      if(think){ mm.reasoning = think; mm.think = true; if(thinkSec) mm.thinkSec = thinkSec; }
+      msgs.push(mm);
+    }
+  }
+  // 去掉空的
+  msgs = msgs.filter(function(x){ return x.content && x.content.trim(); });
+  if(!msgs.length) return null;
+  return {
+    id: 'ds_' + (obj.id || Math.random().toString(36).slice(2)),
+    title: (obj.title || '导入的对话').slice(0, 60),
+    ts: Date.parse(obj.updated_at || obj.inserted_at || '') || Date.now(),
+    msgs: msgs
+  };
+}
+
+// 主导入流程
+async function importDeepSeekZip(file, onProgress){
+  var ab = await new Promise(function(res, rej){
+    var fr = new FileReader();
+    fr.onload = function(){ res(fr.result); };
+    fr.onerror = function(){ rej(new Error('读取文件失败')); };
+    fr.readAsArrayBuffer(file);
+  });
+
+  var entries = zipList(ab);
+  var byName = {};
+  entries.forEach(function(e){ byName[e.name] = e; });
+
+  // 找会话 json
+  var sessionEntries = entries.filter(function(e){
+    return /(^|\/)chat_sessions\/[^\/]+\.json$/i.test(e.name);
+  });
+  if(!sessionEntries.length){
+    throw new Error('这个压缩包里没找到对话数据（缺少 chat_sessions 目录）');
+  }
+
+  // 附件索引：按会话ID归类
+  var filesBySession = {};
+  entries.forEach(function(e){
+    var m = e.name.match(/(^|\/)chat_sessions\/([^\/]+)_files\/(.+)$/i);
+    if(m){ (filesBySession[m[2]] = filesBySession[m[2]] || []).push(e); }
+  });
+
+  var total = sessionEntries.length;
+  var imported = 0, skipped = 0;
+  var created = [];
+
+  for(var i = 0; i < total; i++){
+    if(onProgress) onProgress(i + 1, total);
+    try{
+      var raw = await zipRead(ab, sessionEntries[i]);
+      var obj = JSON.parse(new TextDecoder('utf-8').decode(raw));
+      var conv = dsSessionToConv(obj);
+      if(!conv){ skipped++; continue; }
+
+      // 处理附件图片
+      var sessId = obj.id || '';
+      var atts = filesBySession[sessId] || [];
+      if(atts.length){
+        var imgs = [];
+        for(var a = 0; a < atts.length && a < 30; a++){
+          try{
+            var b = await zipRead(ab, atts[a]);
+            var isWebp = /webp$/i.test(atts[a].name) || (b[0]===0x52 && b[1]===0x49 && b[8]===0x57);
+            var isJpg = b[0]===0xFF && b[1]===0xD8;
+            var isPng = b[0]===0x89 && b[1]===0x50;
+            if(isWebp || isJpg || isPng){
+              if(b.length < 900*1024){
+                var mime = isWebp ? 'image/webp' : (isJpg ? 'image/jpeg' : 'image/png');
+                imgs.push('data:' + mime + ';base64,' + bytesToBase64(b));
+              }
+            }
+          }catch(e2){}
+        }
+        if(imgs.length){
+          // 挂到最后一条用户消息上
+          for(var q = conv.msgs.length - 1; q >= 0; q--){
+            if(conv.msgs[q].role === 'user'){ conv.msgs[q].images = imgs; break; }
+          }
+        }
+      }
+
+      created.push(conv);
+      imported++;
+    }catch(e3){
+      skipped++;
+    }
+
+    // 每 5 个让出一次主线程，界面不卡
+    if(i % 5 === 4) await new Promise(function(r){ setTimeout(r, 0); });
+  }
+
+  // 合并进现有数据
+  var existIds = {};
+  convs.forEach(function(c){ existIds[c.id] = true; });
+  var fresh = created.filter(function(c){ return !existIds[c.id]; });
+  convs = fresh.concat(convs);
+  convs.sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+
+  for(var w = 0; w < fresh.length; w++){
+    await idbSet('conv_' + fresh[w].id, fresh[w]).catch(function(){});
+    if(w % 10 === 9) await new Promise(function(r){ setTimeout(r, 0); });
+  }
+  await idbSet('convs', convs).catch(function(){});
+  try{ localStorage.setItem('dsclone_seen_backup_import', String(Date.now())); }catch(e){}
+
+  return { imported: imported, skipped: skipped, total: total };
+}
+
+// 触发选择文件
+function pickDeepSeekBackup(){
+  var inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.zip,application/zip,application/x-zip-compressed';
+  inp.onchange = async function(){
+    var f = inp.files && inp.files[0];
+    if(!f) return;
+    if(f.size > 200*1024*1024){ toast('备份文件超过 200MB'); return; }
+
+    var mask = document.createElement('div');
+    mask.style.cssText = 'position:fixed;left:0;right:0;bottom:0;top:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-direction:column;gap:12px';
+    mask.innerHTML = '<div id="dsImpTxt">正在读取备份…</div><div style="width:200px;height:4px;background:#ffffff33;border-radius:2px;overflow:hidden"><div id="dsImpBar" style="height:100%;width:0;background:#4d6bfe;transition:width .2s"></div></div>';
+    document.body.appendChild(mask);
+
+    try{
+      var r = await importDeepSeekZip(f, function(cur, tot){
+        var t = document.getElementById('dsImpTxt');
+        var b = document.getElementById('dsImpBar');
+        if(t) t.textContent = '正在导入 ' + cur + ' / ' + tot;
+        if(b) b.style.width = Math.round(cur / tot * 100) + '%';
+      });
+      document.body.removeChild(mask);
+      renderConvs(); renderChat(); updateHeadTitle();
+      alert('导入完成\n\n成功：' + r.imported + ' 个对话\n跳过：' + r.skipped + ' 个\n（跳过的可能是空对话或格式不支持）');
+    }catch(e){
+      try{ document.body.removeChild(mask); }catch(e2){}
+      alert('导入失败：' + (e.message || e));
+    }
+  };
+  inp.click();
 }
 
 async function docxToText(buf){
@@ -3448,6 +3662,8 @@ function subMore(){
   '<button class="btn" id="mExportTxtAll">导出全部为 TXT</button>'+
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
+  '<div style="height:8px"></div><button class="btn" id="mImportDS">导入 DeepSeek 备份（zip）</button>'+
+  '<div style="font-size:12px;color:var(--fg2);margin:6px 2px 0">从 DeepSeek 官方 App「设置 → 数据管理 → 导出所有历史对话」下载的 zip，直接选这个文件就行。对话和图片都会导入。</div>'+
   '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mTestKey">测试连接（检查 Key 是否有效）</button>'+
@@ -3561,6 +3777,7 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='mExportTxt'){ exportText(true); return; }
   if(e.target.id==='mExportTxtAll'){ exportText(false); return; }
   if(e.target.id==='mExport'){ exportAll(); }
+  if(e.target.id==='mImportDS'){ pickDeepSeekBackup(); return; }
   if(e.target.id==='mClear'){
     if(!confirm('清空全部对话？')) return;
     convs=[]; curId=null;
