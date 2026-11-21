@@ -777,7 +777,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-21 15:32';
+var APP_VERSION='2026-11-21 16:54';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1965,6 +1965,17 @@ function dsSessionToConv(obj){
   };
 }
 
+// 让浏览器有机会重绘（保证进度条能动）
+function yieldToUI(){
+  return new Promise(function(r){
+    if(window.requestAnimationFrame){
+      requestAnimationFrame(function(){ setTimeout(r, 0); });
+    } else {
+      setTimeout(r, 0);
+    }
+  });
+}
+
 // 主导入流程
 async function importDeepSeekZip(file, onProgress){
   var ab = await new Promise(function(res, rej){
@@ -1998,7 +2009,8 @@ async function importDeepSeekZip(file, onProgress){
   var created = [];
 
   for(var i = 0; i < total; i++){
-    if(onProgress) onProgress(i + 1, total);
+    if(onProgress) onProgress({stage:'read', cur:i + 1, total:total, imgCur:0, imgTotal:0, imported:imported});
+    await yieldToUI();
     try{
       var raw = await zipRead(ab, sessionEntries[i]);
       var obj = JSON.parse(new TextDecoder('utf-8').decode(raw));
@@ -2010,7 +2022,10 @@ async function importDeepSeekZip(file, onProgress){
       var atts = filesBySession[sessId] || [];
       if(atts.length){
         var imgs = [];
-        for(var a = 0; a < atts.length && a < 30; a++){
+        var attLimit = Math.min(atts.length, 30);
+        for(var a = 0; a < attLimit; a++){
+          if(onProgress) onProgress({stage:'image', cur:i + 1, total:total, imgCur:a + 1, imgTotal:attLimit, imported:imported});
+          await yieldToUI();
           try{
             var b = await zipRead(ab, atts[a]);
             var isWebp = /webp$/i.test(atts[a].name) || (b[0]===0x52 && b[1]===0x49 && b[8]===0x57);
@@ -2038,8 +2053,6 @@ async function importDeepSeekZip(file, onProgress){
       skipped++;
     }
 
-    // 每 5 个让出一次主线程，界面不卡
-    if(i % 5 === 4) await new Promise(function(r){ setTimeout(r, 0); });
   }
 
   // 合并进现有数据
@@ -2050,8 +2063,9 @@ async function importDeepSeekZip(file, onProgress){
   convs.sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
 
   for(var w = 0; w < fresh.length; w++){
+    if(onProgress) onProgress({stage:'save', cur:w + 1, total:fresh.length, imgCur:0, imgTotal:0, imported:imported});
     await idbSet('conv_' + fresh[w].id, fresh[w]).catch(function(){});
-    if(w % 10 === 9) await new Promise(function(r){ setTimeout(r, 0); });
+    if(w % 5 === 4) await yieldToUI();
   }
   await idbSet('convs', convs).catch(function(){});
   try{ localStorage.setItem('dsclone_seen_backup_import', String(Date.now())); }catch(e){}
@@ -2071,15 +2085,28 @@ function pickDeepSeekBackup(){
 
     var mask = document.createElement('div');
     mask.style.cssText = 'position:fixed;left:0;right:0;bottom:0;top:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-direction:column;gap:12px';
-    mask.innerHTML = '<div id="dsImpTxt">正在读取备份…</div><div style="width:200px;height:4px;background:#ffffff33;border-radius:2px;overflow:hidden"><div id="dsImpBar" style="height:100%;width:0;background:#4d6bfe;transition:width .2s"></div></div>';
+    mask.innerHTML = '<div id="dsImpTxt">正在读取备份…</div>' +
+      '<div style="width:220px;height:5px;background:#ffffff33;border-radius:3px;overflow:hidden"><div id="dsImpBar" style="height:100%;width:0;background:#4d6bfe;transition:width .15s"></div></div>' +
+      '<div style="font-size:12px;color:#ffffffaa;margin-top:6px">导入期间请保持在当前页面</div>';
     document.body.appendChild(mask);
 
     try{
-      var r = await importDeepSeekZip(f, function(cur, tot){
+      var r = await importDeepSeekZip(f, function(info){
         var t = document.getElementById('dsImpTxt');
         var b = document.getElementById('dsImpBar');
-        if(t) t.textContent = '正在导入 ' + cur + ' / ' + tot;
-        if(b) b.style.width = Math.round(cur / tot * 100) + '%';
+        var txt = '', pct = 0;
+        if(info.stage === 'read'){
+          txt = '正在读取对话 ' + info.cur + ' / ' + info.total;
+          pct = Math.round(info.cur / info.total * 85);
+        } else if(info.stage === 'image'){
+          txt = '对话 ' + info.cur + ' / ' + info.total + ' · 图片 ' + info.imgCur + ' / ' + info.imgTotal;
+          pct = Math.round((info.cur - 1 + info.imgCur / (info.imgTotal || 1)) / info.total * 85);
+        } else if(info.stage === 'save'){
+          txt = '正在保存 ' + info.cur + ' / ' + info.total;
+          pct = 85 + Math.round(info.cur / info.total * 15);
+        }
+        if(t) t.textContent = txt;
+        if(b) b.style.width = Math.min(100, pct) + '%';
       });
       document.body.removeChild(mask);
       renderConvs(); renderChat(); updateHeadTitle();
