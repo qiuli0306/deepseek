@@ -823,7 +823,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 00:34';
+var APP_VERSION='2026-11-22 03:51';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -856,6 +856,14 @@ if(!S.unlockMigrated){
   S.sysPrompt=''; S.unlockOn=true; S.unlockMigrated=true;
   try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){}
 }
+if(!S.envInjectOff){
+  // 老版本默认注入时间和设备，导致角色扮演里 AI 一直说现实时间；这里强制关一次
+  S.injectTime = false;
+  S.injectDevice = false;
+  S.envInjectOff = true;
+  try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){}
+}
+
 if(!S.unlockV2){
   // 旧版预设会让普通聊天变成写小说，强制换新
   var oldP = String(S.sysPrompt||'');
@@ -2371,7 +2379,7 @@ var _batt=null;
 
 function envContext(){
   var parts=[];
-  if(S.injectTime!==false){
+  if(S.injectTime===true){
     var d=new Date();
     var wd='日一二三四五六'[d.getDay()];
     var h=d.getHours();
@@ -3688,7 +3696,7 @@ function subThemeSub(){
   '</div>'+
   '<div class="sec">额外信息注入</div>'+
   '<div class="group">'+
-    '<div class="row"><span class="k">注入时间<div style="font-size:12px;color:var(--fg3);margin-top:2px">把当前日期、星期、时段告诉 AI</div></span><div class="sw '+((S.injectTime!==false)?'on':'')+'" data-toggle="injectTime"><i></i></div></div>'+
+    '<div class="row"><span class="k">注入时间<div style="font-size:12px;color:var(--fg3);margin-top:2px">把当前日期、星期、时段告诉 AI（玩设定时建议关闭）</div></span><div class="sw '+((S.injectTime===true)?'on':'')+'" data-toggle="injectTime"><i></i></div></div>'+
     '<div class="row"><span class="k">注入设备信息<div style="font-size:12px;color:var(--fg3);margin-top:2px">电量、网络类型</div></span><div class="sw '+(S.injectDevice?'on':'')+'" data-toggle="injectDevice"><i></i></div></div>'+
   '</div>'+
   '<div class="sec">背景与气泡</div>'+
