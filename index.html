@@ -777,7 +777,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-21 15:22';
+var APP_VERSION='2026-11-21 15:32';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3655,17 +3655,7 @@ function subMore(){
     '<div class="row"><span class="k">自动朗读回复</span><div class="sw '+(S.autoplay?'on':'')+'" data-toggle="autoplay"><i></i></div></div>'+
     '<div class="row"><span class="k">AI 自动命名对话</span><div class="sw '+(S.autoTitle!==false?'on':'')+'" data-toggle="autoTitle"><i></i></div></div>'+
   '</div>'+
-  '<div class="sec">'+t('count')+'</div>'+
-  '<div class="group"><div class="row"><span class="k">'+t('count')+'</span><span class="v">'+convs.length+'</span></div></div>'+
-  '<div style="height:12px"></div><button class="btn" id="mExportTxt">导出本对话为 TXT</button>'+
-  '<div style="height:8px"></div>'+
-  '<button class="btn" id="mExportTxtAll">导出全部为 TXT</button>'+
-  '<div style="height:8px"></div>'+
-  '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
-  '<div style="height:8px"></div><button class="btn" id="mImportDS">导入 DeepSeek 备份（zip）</button>'+
-  '<div style="font-size:12px;color:var(--fg2);margin:6px 2px 0">从 DeepSeek 官方 App「设置 → 数据管理 → 导出所有历史对话」下载的 zip，直接选这个文件就行。对话和图片都会导入。</div>'+
-  '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
-  '<div style="height:8px"></div>'+
+  '<div style="height:12px"></div>'+
   '<button class="btn" id="mTestKey">测试连接（检查 Key 是否有效）</button>'+
   '<div style="height:8px"></div><button class="btn primary" id="mSave">'+t('saveBtn')+'</button><div style="height:30px"></div>';
 }
@@ -3675,9 +3665,13 @@ function subData(){
   '<button class="btn" id="mExportTxtAll">导出全部为 TXT</button>'+
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
+  '<div style="height:8px"></div>'+
+  '<button class="btn" id="mImportDS">导入 DeepSeek 备份（zip）</button>'+
+  '<div class="hint" style="margin:6px 2px 0">从 DeepSeek 官方 App「设置 → 数据管理 → 导出所有历史对话」下载的 zip，直接选这个文件。对话、思考过程、图片都会导入，多少条都不卡。</div>'+
   '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
   '<div class="hint">'+t('count')+'：'+convs.length+'</div>';
 }
+
 function syncInputs(){
   if($('#mKey')){
     S.apiKey=cleanAscii($('#mKey').value);
