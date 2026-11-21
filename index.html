@@ -823,7 +823,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-21 20:07';
+var APP_VERSION='2026-11-21 20:19';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3611,8 +3611,6 @@ function subUpdatePage(){
     '<button class="btn primary" id="doCheck">立即检查更新</button>'+
     '<div style="height:8px"></div>'+
     '<button class="btn" id="dlApk">下载最新安装包</button>'+
-    '<div style="height:8px"></div>'+
-    '<button class="btn" id="goThanks" style="color:#e8547c">❤️ 支持作者</button>'+
     '<div class="sec" style="padding-top:20px">更新记录</div>'+
     '<div class="group" id="updLogBox" style="padding:12px 14px"><div style="color:var(--fg3);font-size:13px">加载中…</div></div>'+
     '<div style="height:24px"></div>';
@@ -3907,7 +3905,6 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='mExportTxtAll'){ exportText(false); return; }
   if(e.target.id==='mExport'){ exportAll(); }
   if(e.target.id==='mImportDS'){ pickDeepSeekBackup(); return; }
-  if(e.target.id==='goThanks'){ openThanks(); return; }
   if(e.target.id==='mClear'){
     if(!confirm('清空全部对话？')) return;
     convs=[]; curId=null;
