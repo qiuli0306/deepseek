@@ -859,7 +859,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 18:31';
+var APP_VERSION='2026-11-22 19:22';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2136,17 +2136,60 @@ function yieldToUI(){
 }
 
 // 主导入流程
-async function importDeepSeekZip(file, onProgress){
-  var ab = await new Promise(function(res, rej){
-    var fr = new FileReader();
-    fr.onload = function(){ res(fr.result); };
-    fr.onerror = function(){ rej(new Error('读取文件失败')); };
-    fr.readAsArrayBuffer(file);
-  });
+// 从 File 分片读取 zip 目录（大文件也不吃内存）
+async function zipListFromFile(file){
+  var tailLen = Math.min(file.size, 66000);
+  var tailStart = file.size - tailLen;
+  var tail = new Uint8Array(await file.slice(tailStart, file.size).arrayBuffer());
+  var dv = new DataView(tail.buffer);
 
-  var entries = zipList(ab);
-  var byName = {};
-  entries.forEach(function(e){ byName[e.name] = e; });
+  var eocd = -1;
+  for(var i = tail.length - 22; i >= 0; i--){
+    if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  }
+  if(eocd < 0) throw new Error('不是有效的 zip 文件');
+
+  var cdCount = dv.getUint16(eocd + 10, true);
+  var cdSize  = dv.getUint32(eocd + 12, true);
+  var cdOff   = dv.getUint32(eocd + 16, true);
+
+  var cdBuf = new Uint8Array(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  var cdv = new DataView(cdBuf.buffer);
+  var list = [], p = 0;
+  for(var k = 0; k < cdCount; k++){
+    if(cdv.getUint32(p, true) !== 0x02014b50) break;
+    var method   = cdv.getUint16(p + 10, true);
+    var compSize = cdv.getUint32(p + 20, true);
+    var nameLen  = cdv.getUint16(p + 28, true);
+    var extraLen = cdv.getUint16(p + 30, true);
+    var cmtLen   = cdv.getUint16(p + 32, true);
+    var lho      = cdv.getUint32(p + 42, true);
+    var name = new TextDecoder('utf-8').decode(cdBuf.subarray(p + 46, p + 46 + nameLen));
+    list.push({ name:name, method:method, compSize:compSize, lho:lho });
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+  return list;
+}
+
+// 读取单个条目（只读需要的那一段）
+async function zipReadFromFile(file, entry){
+  var lh = new Uint8Array(await file.slice(entry.lho, entry.lho + 30).arrayBuffer());
+  if(lh.length < 30) throw new Error('zip 条目头损坏');
+  var ldv = new DataView(lh.buffer);
+  var lNameLen  = ldv.getUint16(26, true);
+  var lExtraLen = ldv.getUint16(28, true);
+  var dataStart = entry.lho + 30 + lNameLen + lExtraLen;
+  var data = new Uint8Array(await file.slice(dataStart, dataStart + entry.compSize).arrayBuffer());
+  if(entry.method === 0) return data;
+  if(entry.method === 8){
+    var out = await inflateAny(data);
+    return new Uint8Array(out);
+  }
+  throw new Error('不支持的压缩方式');
+}
+
+async function importDeepSeekZip(file, onProgress){
+  var entries = await zipListFromFile(file);
 
   // 找会话 json
   var sessionEntries = entries.filter(function(e){
@@ -2171,7 +2214,7 @@ async function importDeepSeekZip(file, onProgress){
     if(onProgress) onProgress({stage:'read', cur:i + 1, total:total, imgCur:0, imgTotal:0, imported:imported});
     await yieldToUI();
     try{
-      var raw = await zipRead(ab, sessionEntries[i]);
+      var raw = await zipReadFromFile(file, sessionEntries[i]);
       var obj = JSON.parse(new TextDecoder('utf-8').decode(raw));
       var conv = dsSessionToConv(obj);
       if(!conv){ skipped++; continue; }
@@ -2186,7 +2229,7 @@ async function importDeepSeekZip(file, onProgress){
           if(onProgress) onProgress({stage:'image', cur:i + 1, total:total, imgCur:a + 1, imgTotal:attLimit, imported:imported});
           await yieldToUI();
           try{
-            var b = await zipRead(ab, atts[a]);
+            var b = await zipReadFromFile(file, atts[a]);
             var isWebp = /webp$/i.test(atts[a].name) || (b[0]===0x52 && b[1]===0x49 && b[8]===0x57);
             var isJpg = b[0]===0xFF && b[1]===0xD8;
             var isPng = b[0]===0x89 && b[1]===0x50;
@@ -2305,7 +2348,7 @@ function pickDeepSeekBackup(){
   inp.onchange = async function(){
     var f = inp.files && inp.files[0];
     if(!f) return;
-    if(f.size > 200*1024*1024){ toast('备份文件超过 200MB'); return; }
+    if(f.size > 1024*1024*1024){ toast('备份文件超过 1GB，请先在电脑上解压再分次导入'); return; }
 
     var mask = document.createElement('div');
     mask.style.cssText = 'position:fixed;left:0;right:0;bottom:0;top:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-direction:column;gap:12px';
