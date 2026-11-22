@@ -859,7 +859,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 18:23';
+var APP_VERSION='2026-11-22 18:31';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2703,11 +2703,26 @@ function humanError(status, raw){
     return '找不到接口或模型。\n· Base URL 应该填到 /v1 为止，不要带 /chat/completions\n· 模型名要和后台列表一致';
   }
   if(status===400){
-    if(low.indexOf('model')>=0) return '模型名不对，请核对服务商的模型列表';
-    if(low.indexOf('context')>=0 || low.indexOf('too long')>=0 || low.indexOf('maximum')>=0){
-      return '对话太长了，超出模型上限。\n· 开一个新对话，或删掉一些旧消息';
+    // 顺序很重要：先判断更具体的错误，别把「上下文超长」误报成「模型名不对」
+    if(low.indexOf('context length')>=0 || low.indexOf('context_length')>=0
+       || low.indexOf('too long')>=0 || low.indexOf('maximum context')>=0
+       || low.indexOf('token')>=0 && low.indexOf('exceed')>=0){
+      return '对话太长了，超出模型上下文上限。\n· 开一个新对话重新聊\n· 或删掉一些旧消息再试';
     }
-    return '请求参数有问题：'+r.slice(0,100);
+    if(low.indexOf('image')>=0 && (low.indexOf('large')>=0 || low.indexOf('size')>=0 || low.indexOf('width')>=0)){
+      return '图片尺寸或体积超限。\n· 到「数据管理 → 压缩历史图片」处理一下\n· 或删掉那条带图的消息';
+    }
+    if(low.indexOf('model not found')>=0 || low.indexOf('invalid model')>=0
+       || low.indexOf('model_not_found')>=0 || low.indexOf('no such model')>=0){
+      return '模型名不对，请核对服务商的模型列表';
+    }
+    if(low.indexOf('temperature')>=0) return '温度参数超出范围（应为 0-2）';
+    if(low.indexOf('max_tokens')>=0) return 'max_tokens 参数超出范围';
+    if(low.indexOf('role')>=0 || low.indexOf('messages')>=0){
+      return '消息格式有问题：'+r.slice(0,120);
+    }
+    // 兜底：把原始错误完整显示出来，方便定位
+    return '请求被拒（400）：'+r.slice(0,180);
   }
 
   // 限流 / 服务端
