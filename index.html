@@ -482,6 +482,38 @@ body[data-theme="light"] .toast{background:#222c}
 </style>
 </head>
 <body data-theme="dark">
+<div id="bootScreen">
+  <div class="boot-inner">
+    <div class="boot-whale">
+      <svg viewBox="0 0 32 32" width="56" height="56" fill="none">
+        <rect width="32" height="32" rx="8" fill="#4d6bfe"/>
+        <path d="M5 19.5c0-7.2 4.9-11.7 11-11.7s11 4.5 11 11.7c0 1.9-.9 2.8-2.4 2.8H7.4C5.9 22.3 5 21.4 5 19.5z" fill="#fff"/>
+        <circle cx="12.5" cy="15.8" r="1.7" fill="#4d6bfe"/>
+        <circle cx="19.5" cy="15.8" r="1.7" fill="#4d6bfe"/>
+      </svg>
+    </div>
+    <div class="boot-text">正在加载…</div>
+    <div class="boot-bar"><i></i></div>
+  </div>
+</div>
+<style>
+#bootScreen{position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;
+  background:#f7f8fa;display:flex;align-items:center;justify-content:center;
+  transition:opacity .28s ease;font-family:-apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif}
+#bootScreen.hide{opacity:0;pointer-events:none}
+.boot-inner{display:flex;flex-direction:column;align-items:center;gap:18px}
+.boot-whale{animation:bootFloat 1.6s ease-in-out infinite}
+.boot-whale svg{border-radius:14px;box-shadow:0 6px 24px rgba(77,107,254,.28);display:block}
+@keyframes bootFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.boot-text{font-size:14px;color:#8a8f99;letter-spacing:.5px}
+.boot-bar{width:120px;height:3px;border-radius:2px;background:#e5e7eb;overflow:hidden}
+.boot-bar i{display:block;width:38%;height:100%;border-radius:2px;background:#4d6bfe;
+  animation:bootSlide 1.1s ease-in-out infinite}
+@keyframes bootSlide{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
+body[data-theme="dark"] #bootScreen{background:#16171a}
+body[data-theme="dark"] .boot-text{color:#7d828c}
+body[data-theme="dark"] .boot-bar{background:#2a2c31}
+</style>
 <div class="app" id="appRoot">
 
   <div class="main" id="styleRoot">
@@ -823,7 +855,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 03:51';
+var APP_VERSION='2026-11-22 12:56';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -4722,6 +4754,27 @@ $('#updX').addEventListener('click', function(){
   $('#updMask').classList.remove('on');
 });
 setTimeout(function(){ checkUpdate(false); }, 2500);
+
+/* 隐藏启动动画：等首屏渲染完成再淡出 */
+(function hideBoot(){
+  var el = document.getElementById('bootScreen');
+  if(!el) return;
+  var done = false;
+  function go(){
+    if(done) return;
+    done = true;
+    el.classList.add('hide');
+    setTimeout(function(){ try{ el.parentNode && el.parentNode.removeChild(el); }catch(e){} }, 320);
+  }
+  // 优先等框架渲染完
+  if(window.requestAnimationFrame){
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ setTimeout(go, 60); }); });
+  } else {
+    setTimeout(go, 300);
+  }
+  // 兜底：最多 4 秒强制消失，绝不让用户卡在加载页
+  setTimeout(go, 4000);
+})();
 
 /* ================= 返回键层级 ================= */
 window.addEventListener('popstate', function(){
