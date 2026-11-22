@@ -859,7 +859,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 16:37';
+var APP_VERSION='2026-11-22 18:23';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2232,6 +2232,71 @@ async function importDeepSeekZip(file, onProgress){
   return { imported: imported, skipped: skipped, total: total };
 }
 
+// 压缩单张 dataURL 图片
+function recompressImage(src, maxSide, quality){
+  return new Promise(function(resolve){
+    if(!src || src.indexOf('data:image') !== 0) return resolve(null);
+    var img = new Image();
+    img.onload = function(){
+      var w = img.width, h = img.height;
+      var need = (w > maxSide || h > maxSide);
+      // 尺寸没超但体积很大的，也压一下
+      var heavy = src.length > 400 * 1024;
+      if(!need && !heavy) return resolve(null);   // 不需要处理
+      var k = Math.min(1, maxSide / Math.max(w, h));
+      var nw = Math.round(w * k), nh = Math.round(h * k);
+      var cv = document.createElement('canvas');
+      cv.width = nw; cv.height = nh;
+      cv.getContext('2d').drawImage(img, 0, 0, nw, nh);
+      try{
+        resolve(cv.toDataURL('image/jpeg', quality || 0.75));
+      }catch(e){ resolve(null); }
+    };
+    img.onerror = function(){ resolve(null); };
+    img.src = src;
+  });
+}
+
+// 扫描全部对话，压缩超大的历史图片
+async function shrinkAllImages(){
+  if(!convs.length){ toast('没有对话'); return; }
+  var total = 0, changed = 0, savedBytes = 0;
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;left:0;right:0;top:0;bottom:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;flex-direction:column;gap:12px';
+  mask.innerHTML = '<div id="shTxt">正在处理…</div><div style="font-size:12px;color:#ffffffaa">请保持在当前页面</div>';
+  document.body.appendChild(mask);
+
+  for(var i = 0; i < convs.length; i++){
+    var c = convs[i];
+    var dirty = false;
+    for(var j = 0; j < (c.msgs || []).length; j++){
+      var m = c.msgs[j];
+      if(!m.images || !m.images.length) continue;
+      for(var k2 = 0; k2 < m.images.length; k2++){
+        total++;
+        var src = m.images[k2];
+        var out = await recompressImage(src, 1280, 0.75);
+        if(out && out.length < src.length){
+          savedBytes += (src.length - out.length);
+          m.images[k2] = out;
+          changed++; dirty = true;
+        }
+      }
+      var t = document.getElementById('shTxt');
+      if(t) t.textContent = '正在处理 '+ (i+1) +' / '+ convs.length +' 个对话…';
+      await yieldToUI();
+    }
+    if(dirty){
+      await idbSet('conv_' + c.id, c).catch(function(){});
+      saveListNow();
+    }
+  }
+  try{ document.body.removeChild(mask); }catch(e){}
+  var mb = (savedBytes / 1048576).toFixed(1);
+  alert('处理完成\n\n检查图片：'+ total +' 张\n压缩：'+ changed +' 张\n节省空间：' + mb + ' MB\n\n以后发消息只会带最近 6 条消息里的图片，不会再因为旧图报错了。');
+  renderChat();
+}
+
 // 触发选择文件
 function pickDeepSeekBackup(){
   var inp = document.createElement('input');
@@ -2668,7 +2733,17 @@ function buildMessages(c){
     arr.push({role:'system',content:
       '你现在是在聊天软件里和对方聊天，不是在写文章或写报告。要求：像真人一样口语化说话，可以有情绪、有停顿；不要分点、不要列清单、不要"首先其次最后"这种结构、不要标题；该短就短，该说长就说，不要为了简短而砍掉真心的内容。'});
   }
-  c.msgs.forEach(function(m){
+  // 图片策略：只发最近 6 条消息里的图，更早的替换成文字标记
+  // 原因：旧图会让请求超限报错，而且极贵（一张图≈3-6万token）
+  var IMG_MSG_WINDOW = 6;
+  var MAX_IMG_B64 = 700 * 1024;   // 单张 base64 超过 700KB 就跳过（平台限制）
+  var _userIdxList = [];
+  c.msgs.forEach(function(m, i){ if(m.role === 'user') _userIdxList.push(i); });
+  var _firstImgMsgIdx = _userIdxList.length > IMG_MSG_WINDOW
+    ? _userIdxList[_userIdxList.length - IMG_MSG_WINDOW]
+    : 0;
+
+  c.msgs.forEach(function(m, _mi){
     if(!m.content && !(m.images&&m.images.length) && !(m.files&&m.files.length)) return;
     if(m.role==='user'){
       var text=m.content||'';
@@ -2676,10 +2751,26 @@ function buildMessages(c){
         text += m.files.map(function(f){ return '\n\n[文件：'+f.name+']\n'+(f.text||''); }).join('');
       }
       if(m.images&&m.images.length){
-        var parts=[];
-        if(text) parts.push({type:'text',text:text});
-        m.images.forEach(function(src){ parts.push({type:'image_url',image_url:{url:src}}); });
-        arr.push({role:'user',content:parts});
+        var keepImgs = [], dropCount = 0;
+        m.images.forEach(function(src){
+          var isOld = _mi < _firstImgMsgIdx;
+          var tooBig = src.length > MAX_IMG_B64;
+          if(isOld || tooBig){ dropCount++; }
+          else keepImgs.push(src);
+        });
+        if(!keepImgs.length){
+          // 全部省略 → 用文字标记代替，保持上下文连贯
+          text += (text ? '\n' : '') + '[图片 ×' + m.images.length + '（已省略以节省长度）]';
+          arr.push({role:'user', content:text});
+        } else {
+          if(dropCount > 0){
+            text += (text ? '\n' : '') + '[另有 ' + dropCount + ' 张图片已省略]';
+          }
+          var parts=[];
+          if(text) parts.push({type:'text',text:text});
+          keepImgs.forEach(function(src){ parts.push({type:'image_url',image_url:{url:src}}); });
+          arr.push({role:'user',content:parts});
+        }
       } else {
         arr.push({role:'user',content:text});
       }
@@ -3934,6 +4025,9 @@ function subData(){
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mImportDS">导入 DeepSeek 备份（zip）</button>'+
   '<div class="hint" style="margin:6px 2px 0">从 DeepSeek 官方 App「设置 → 数据管理 → 导出所有历史对话」下载的 zip，直接选这个文件。对话、思考过程、图片都会导入，多少条都不卡。</div>'+
+  '<div style="height:8px"></div>'+
+  '<button class="btn" id="mShrinkImgs">压缩历史图片（解决发送失败）</button>'+
+  '<div class="hint" style="margin:6px 2px 0">把对话里过大的旧图片重新压缩。图片太多导致发不出去、或 token 消耗异常时可以点。</div>'+
   '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
   '<div class="hint">'+t('count')+'：'+convs.length+'</div>';
 }
@@ -4038,6 +4132,7 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='mExportTxtAll'){ exportText(false); return; }
   if(e.target.id==='mExport'){ exportAll(); }
   if(e.target.id==='mImportDS'){ pickDeepSeekBackup(); return; }
+  if(e.target.id==='mShrinkImgs'){ shrinkAllImages(); return; }
   if(e.target.id==='mClear'){
     if(!confirm('清空全部对话？')) return;
     convs=[]; curId=null;
