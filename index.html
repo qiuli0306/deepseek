@@ -855,7 +855,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 12:56';
+var APP_VERSION='2026-11-22 13:18';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -979,16 +979,34 @@ function idbHas(key){
 }
 
 function saveS(){ localStorage.setItem(SK, JSON.stringify(S)); }
+// 只写当前对话（发消息、切对话走这条，绝不重写整表）
 function saveC(){
-  // 1) 当前对话单独存（小、快，切后台也不容易丢）
   try{
     var c=cur();
     if(c) idbSet('conv_'+(c.id||'cur'), c).catch(function(){});
   }catch(e){}
-  // 2) 整体存（仅在首次载入完成后，避免空列表冲掉历史）
+  scheduleListSave();
+}
+
+// 列表（id/标题/时间等元数据）变化时才写，且合并短时间内的多次调用
+var _listSaveTimer = null;
+function scheduleListSave(){
   if(!_loaded) return;
-  try{ idbSet('convs', convs).catch(function(){ toast('保存失败，请检查存储空间'); }); }
-  catch(e){ toast('保存失败：'+(e.message||'')); }
+  if(_listSaveTimer) clearTimeout(_listSaveTimer);
+  _listSaveTimer = setTimeout(function(){
+    _listSaveTimer = null;
+    saveListNow();
+  }, 1200);
+}
+function saveListNow(){
+  if(!_loaded) return;
+  try{
+    idbSet('convs', convs.map(listMeta)).catch(function(){ toast('保存失败，请检查存储空间'); });
+  }catch(e){ toast('保存失败：'+(e.message||'')); }
+}
+// 列表只保留元数据，消息体单独存在 conv_<id>
+function listMeta(c){
+  return { id:c.id, title:c.title, ts:c.ts, pinned:c.pinned, titleGen:c.titleGen };
 }
 
 function saveCurOnly(){
@@ -1449,8 +1467,9 @@ function applyEdit(idx, newText, newImgs){
 
 /* ================= 抽屉 ================= */
 var multiMode=false, multiSel=new Set(), searchQ='';
-function renderConvs(){
+function renderConvs(reset){
   var box=$('#convs');
+  if(reset) window.__convLimit = 60;
   if(!convs.length){ box.innerHTML='<div class="empty-tip">'+t('empty')+'</div>'; updateMultiBar(); return; }
   var now=Date.now();
   var list=convs.slice().sort(function(a,b){ return b.ts-a.ts; });
@@ -1476,18 +1495,43 @@ function renderConvs(){
       (multiMode?'<span class="chk'+(sel?' on':'')+'">'+(sel?'✓':'')+'</span>':'')+
       '<span>'+esc(c.title)+'</span></div>';
   }
-  var h='';
-  if(pinned.length){
-    h+='<div class="grp">'+t('pinned')+'</div>';
-    pinned.forEach(function(c){ h+=item(c); });
+  // 分页渲染：一次最多画 60 条，避免上千条 DOM 卡顿
+  var LIMIT = window.__convLimit || 60;
+  var shown = 0, truncated = false;
+  function emitGroup(title, arr){
+    if(!arr.length) return '';
+    var out = '<div class="grp">'+title+'</div>';
+    for(var i=0;i<arr.length;i++){
+      if(shown >= LIMIT){ truncated = true; break; }
+      out += item(arr[i]);
+      shown++;
+    }
+    return out;
   }
-  keys.forEach(function(k){
-    if(!groups[k].length) return;
-    h+='<div class="grp">'+k+'</div>';
-    groups[k].forEach(function(c){ h+=item(c); });
-  });
-  box.innerHTML=h||'<div class="empty-tip">'+t('empty')+'</div>';
+  var h='';
+  h += emitGroup(t('pinned'), pinned);
+  for(var gi=0; gi<keys.length; gi++){
+    if(truncated) break;
+    h += emitGroup(keys[gi], groups[keys[gi]]);
+  }
+  if(truncated){
+    h += '<div id="convMore" style="text-align:center;padding:14px;color:var(--fg3);font-size:13px">上滑加载更多（还有 '+(list.length-shown)+' 条）</div>';
+  }
+  box.innerHTML = h || '<div class="empty-tip">'+t('empty')+'</div>';
   updateMultiBar();
+  if(truncated){
+    var more = $('#convMore');
+    if(more){
+      var io = new IntersectionObserver(function(entries){
+        if(entries[0].isIntersecting){
+          io.disconnect();
+          window.__convLimit = LIMIT + 60;
+          renderConvs();
+        }
+      }, {root: box.parentNode || null, rootMargin: '120px'});
+      io.observe(more);
+    }
+  }
 }
 function updateMultiBar(){
   var bar=$('#grpbar');
@@ -1519,10 +1563,10 @@ document.addEventListener('click',function(e){
     if(multiSel.has(curId)){ curId=null; }
     multiMode=false; multiSel.clear();
     _delIds.forEach(function(did){ try{ idbDelKey('conv_'+did).catch(function(){}); }catch(e){} });
-    saveC(); renderConvs(); renderChat(); updateHeadTitle();
+    saveC(); saveListNow(); renderConvs(); renderChat(); updateHeadTitle();
   }
 });
-$('#searchInput').addEventListener('input',function(){ searchQ=this.value.trim(); renderConvs(); });
+$('#searchInput').addEventListener('input',function(){ searchQ=this.value.trim(); renderConvs(true); });
 
 /* ================= 头像 ================= */
 var AV_USER='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c1.4-3.6 4.2-5.2 7.5-5.2s6.1 1.6 7.5 5.2"/></svg>';
@@ -3331,7 +3375,7 @@ function openMsgMenu(idx, px, py){
 
 /* ================= 抽屉 ================= */
 function openDrawer(){
-  renderConvs(); $('#drawer').classList.add('on'); $('#mask').classList.add('on'); pushLayer('drawer');
+  renderConvs(true); $('#drawer').classList.add('on'); $('#mask').classList.add('on'); pushLayer('drawer');
 }
 function closeDrawer(){ $('#drawer').classList.remove('on'); $('#mask').classList.remove('on'); }
 $('#btnMenu').addEventListener('click',openDrawer);
@@ -3442,7 +3486,7 @@ $('#convMenu').addEventListener('click',function(e){
     if(curId===id){ curId=null; renderChat(); updateHeadTitle(); }
     // 关键：同时删掉这条对话的单独缓存，否则重开会被恢复
     try{ idbDelKey('conv_'+id).catch(function(){}); }catch(e){}
-    saveC(); renderConvs();
+    saveC(); saveListNow(); renderConvs();
   }
 });
 var inpCb=null;
@@ -4830,6 +4874,7 @@ applyLang();
           if(!o || ((c.msgs||[]).length >= (o.msgs||[]).length)) map[c.id]=c;
         });
         convs = Object.keys(map).map(function(k){ return map[k]; })
+                  .filter(function(c){ return Array.isArray(c.msgs); })
                   .sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
         renderConvs(); renderChat(); updateHeadTitle();
         try{ localStorage.removeItem(CK); }catch(e){}
