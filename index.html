@@ -420,6 +420,10 @@ body[data-theme="light"] .dialog{background:#fff}
 .legal p{margin:0 0 10px}
 .legal strong{color:var(--fg)}
 
+.regNotice{margin:16px 0 0;padding:16px 14px;border-radius:14px;text-align:center;
+  background:rgba(255,159,64,.10);border:1px solid rgba(255,159,64,.28);
+  font-size:18px;font-weight:800;color:#d97706;line-height:1.5;letter-spacing:.3px}
+body[data-theme="dark"] .regNotice{background:rgba(255,159,64,.13);color:#fbbf24}
 .thx-wrap{padding:24px 24px 0;text-align:center}
 .thx-title{font-size:19px;font-weight:800;line-height:1.85;color:var(--fg);letter-spacing:.3px}
 .thx-qr-box{margin:26px auto 0;width:230px;max-width:66vw}
@@ -855,7 +859,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 14:23';
+var APP_VERSION='2026-11-22 16:37';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3696,7 +3700,15 @@ function subAccount(){
     '<div style="height:14px"></div>'+
     '<button class="btn primary" id="sbLogin">登录</button>'+
     '<div style="height:8px"></div>'+
-    '<button class="btn" id="sbSignup">注册新账号</button>'+
+    '<button class="btn" id="sbSignup" style="opacity:.45">注册新账号</button>'+
+    '<div class="regNotice">'+
+      '暂时不用注册<br>'+
+      '<span style="font-size:14px;font-weight:600;line-height:1.7;display:inline-block;margin-top:8px">'+
+        '注册功能出了点问题，正在修<br>'+
+        '不登录也能正常聊天，记录只存在你自己手机上<br>'+
+        '删掉软件或清数据才会消失'+
+      '</span>'+
+    '</div>'+
     '<div style="height:20px"></div>';
 }
 function subLogout(){
@@ -3713,9 +3725,14 @@ function subLogout(){
       '<div style="height:20px"></div>';
   }
   return '<div class="sec" style="padding-top:14px">当前未登录</div>'+
-    '<div class="hint">不登录也能正常聊天，对话只存在本机，删掉软件或清除数据就没了。<br>登录后对话会同步到云端，换设备也能找回。</div>'+
-    '<div style="height:14px"></div>'+
-    '<button class="btn primary" id="goLogin">去登录</button>'+
+    '<div class="regNotice">'+
+      '暂时不用管登录<br>'+
+      '<span style="font-size:14px;font-weight:600;line-height:1.7;display:inline-block;margin-top:8px">'+
+        '云端同步功能出了点问题，正在修<br>'+
+        '不登录照样能聊天，记录存在你自己手机上'+
+      '</span>'+
+    '</div>'+
+    '<div class="hint">删掉软件或清除数据后，本机记录才会消失。</div>'+
     '<div style="height:20px"></div>';
 }
 function subUpdatePage(){
