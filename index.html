@@ -855,7 +855,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-22 13:18';
+var APP_VERSION='2026-11-22 14:23';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1618,13 +1618,28 @@ function thinkHtml(m){
   var sec = m.thinkSec ? '（用时 '+m.thinkSec+' 秒）' : '';
   return '<details class="think"'+(open?' open':'')+'><summary>已深度思考'+sec+'</summary><div class="in">'+esc(m.reasoning)+'</div></details>';
 }
+// 流式阶段的极简渲染：只转义 + 换行，速度是完整 markdown 的几十倍
+function mdLight(t){
+  var safe = esc(t);
+  // 只保留最基础的换行，代码块先按纯文本显示
+  return safe.replace(/\n/g, '<br>');
+}
+
 function renderChat(){
   setTimeout(function(){ try{ renderMath(document.getElementById('msgs')); }catch(e){} }, 30);
   var c=cur(), msgs=$('#msgs'), welcome=$('#welcome');
+  if(c && c.id !== window.__chatCurId){ window.__chatCurId = c.id; window.__chatLimit = 80; }
   if(!c||!c.msgs.length){ welcome.style.display=''; msgs.innerHTML=''; updateHeadTitle(); return; }
   welcome.style.display='none';
   var ic=icons(), h='';
+  // 长对话分页：只渲染最近 CHAT_LIMIT 条，避免上百条全量重绘卡顿
+  var CHAT_LIMIT = window.__chatLimit || 80;
+  var startIdx = Math.max(0, c.msgs.length - CHAT_LIMIT);
+  if(startIdx > 0){
+    h += '<div id="chatMore" style="text-align:center;padding:12px;color:var(--fg3);font-size:13px;cursor:pointer">↑ 加载更早的 '+startIdx+' 条消息</div>';
+  }
   c.msgs.forEach(function(m,idx){
+    if(idx < startIdx) return;
     if(m.role==='user'){
       h+='<div class="msg user" data-i="'+idx+'">'+
          '<div class="wrapin">'+
@@ -1699,6 +1714,16 @@ function renderChat(){
     }
   });
   msgs.innerHTML=h;
+  var cm = document.getElementById('chatMore');
+  if(cm){
+    cm.onclick = function(){
+      window.__chatLimit = (window.__chatLimit || 80) + 80;
+      var sc = $('#scroll');
+      var keep = sc ? sc.scrollHeight : 0;
+      renderChat();
+      if(sc) sc.scrollTop = sc.scrollHeight - keep;
+    };
+  }
   scrollBottom(true);
 }
 function isLastMsg(c,m){ return c.msgs[c.msgs.length-1]===m; }
@@ -2873,7 +2898,14 @@ async function send(text, retryIndex, skipPush){
       if(bd){
         var shown=(ai.content||'');
         if(!shown){ bd.innerHTML='<span class="dots"><i></i><i></i><i></i></span>'; }
-        else { bd.innerHTML=md(shown); }
+        else {
+          // 流式阶段只贴纯文本，避免每次都对整段做 markdown 解析（这是卡顿主因）
+          var txt = mdLight(shown);
+          if(bd.getAttribute('data-len') !== String(shown.length)){
+            bd.innerHTML = txt;
+            bd.setAttribute('data-len', String(shown.length));
+          }
+        }
       }
       scrollBottom();
       // 生成过程中每 2 秒落一次盘，防止切走丢内容
