@@ -906,7 +906,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 15:08';
+var APP_VERSION='2026-11-23 15:56';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2673,13 +2673,62 @@ function envContext(){
   return parts.length ? parts.join('\n')+'\n' : '';
 }
 
+// 从用户原话里提取真正的搜索词
+// 目的：去掉「帮我搜一下」这类指令，长文本优先取结尾（问题通常在最后）
+function extractSearchQuery(raw){
+  var t = String(raw || '').trim();
+  if(!t) return '';
+
+  // 去掉开头的指令性词语
+  var pats = [
+    /^(帮我|请|麻烦|你|能不能|可以)?\s*(联网)?\s*(搜索一下|搜索|搜一下|搜搜|查一下|查查|查询|找一下|找找)\s*[：:，,。\s]*/i,
+    /^(搜索|search)\s*[：:，,。\s]*/i
+  ];
+  for(var i=0;i<pats.length;i++){
+    var nv = t.replace(pats[i], '');
+    if(nv !== t) t = nv;
+  }
+
+  // 去掉结尾的客套话
+  t = t.replace(/[，,。\s]*(谢谢|多谢|麻烦了|拜托)[！!。\s]*$/g, '');
+
+  // 去掉句子中间的指令词（"顺便帮我查查""另外搜一下"等）
+  t = t.replace(/(顺便|另外|还有|再)?\s*(帮我|请|麻烦|你)?\s*(查查|查一下|搜一下|搜搜|搜索一下|查询一下|搜索搜|找一下)\s*/g, ' ');
+
+  // 太长时只取结尾：真正的搜索意图通常在最后，前面的设定/开场白会干扰搜索
+  if(t.length > 300){
+    // 按句末标点切成整句
+    var segs = [], cur = '';
+    for(var k=0;k<t.length;k++){
+      cur += t[k];
+      if(/[。！？!?\n]/.test(t[k])){ segs.push(cur); cur = ''; }
+    }
+    if(cur) segs.push(cur);
+
+    // 从最后一句往前取，最多 2 句 / 200 字，够用就停
+    var out = [], total = 0;
+    for(var q=segs.length-1;q>=0;q--){
+      var seg = String(segs[q]).trim();
+      if(!seg) continue;
+      if(total + seg.length > 200 && out.length) break;   // 已经有一句了就不再往前拿
+      out.unshift(seg);
+      total += seg.length;
+      if(total >= 8 && out.length >= 1 && q === segs.length-1) break;  // 最后一句够长，直接用
+      if(out.length >= 2) break;                          // 最多两句
+    }
+    t = out.join('');
+  }
+
+  return t.replace(/\s+/g,' ').trim();
+}
+
 async function webSearch(query){
   var base=cleanAscii(S.baseUrl||'').replace(/\/+$/,'') || 'https://api.deepseek.com';
   var url = /\/v1$/.test(base) ? base+'/tools/search' : base+'/v1/tools/search';
   var res = await apiFetch(url, {
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
-    body: JSON.stringify({query:String(query||'').slice(0,120), count:5, need_content:true})
+    body: JSON.stringify({query:extractSearchQuery(query).slice(0,400) || String(query||'').slice(0,400), count:5, need_content:true})
   });
   if(!res.ok){
     var t=''; try{ t=await res.text(); }catch(e){}
