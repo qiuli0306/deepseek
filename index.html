@@ -292,6 +292,10 @@ body[data-theme="light"] .item.on{background:#e8edff;color:#2f49d9}
 .item.on .hit{background:rgba(255,255,255,.25);color:inherit}
 .item:active{opacity:.7}
 .empty-tip{color:var(--fg3);font-size:13px;text-align:center;padding:30px 0}
+/* 每条回复的用量行 */
+.tokline{margin:7px 0 3px;font-size:11.5px;line-height:1.5;color:var(--fg3);
+  letter-spacing:.2px;user-select:text;-webkit-user-select:text}
+.style-bubble .tokline{padding-left:2px}
 .drawer-foot{border-top:1px solid var(--line);padding:8px}
 .fitem{display:flex;align-items:center;gap:10px;padding:12px;border-radius:11px;font-size:15px;color:var(--fg);width:100%}
 .fitem svg{width:19px;height:19px;color:var(--fg2)}
@@ -784,6 +788,53 @@ body[data-theme="dark"] .note-li{color:#bbb}
 .note-btn:disabled{background:#c8cdd8;color:#fff}
 .note-foot{font-size:11px;color:#aaa;margin-top:12px;line-height:1.7}
 </style>
+<div class="uq-mask" id="uqMask">
+  <div class="uq-card">
+    <div class="uq-ic">💰</div>
+    <div class="uq-title">新功能上线</div>
+    <div class="uq-sub">现在能看到每句话花了多少钱</div>
+    <div class="uq-demo">
+      <div class="uq-demo-l">示例</div>
+      <div class="uq-demo-t">输入 18,205（命中 100%）· 输出 261 · 约 ¥0.00144</div>
+    </div>
+    <div class="uq-steps">
+      <div class="uq-s"><span class="uq-n">1</span>打开设置</div>
+      <div class="uq-s"><span class="uq-n">2</span>进入「主题设置」</div>
+      <div class="uq-s"><span class="uq-n">3</span>找到「用量统计」并打开</div>
+    </div>
+    <button class="uq-btn" id="uqOk">知道了</button>
+    <div class="uq-foot">默认关闭，不想要可以随时关掉</div>
+  </div>
+</div>
+<style>
+.uq-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;
+  background:rgba(0,0,0,.66);display:none;align-items:center;justify-content:center;padding:22px}
+.uq-mask.on{display:flex}
+.uq-card{background:#fff;border-radius:24px;width:100%;max-width:330px;padding:28px 22px 20px;
+  text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:88vh;overflow-y:auto;
+  animation:uqIn .32s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes uqIn{from{transform:scale(.86);opacity:0}to{transform:scale(1);opacity:1}}
+body[data-theme="dark"] .uq-card{background:#1f2024}
+.uq-ic{font-size:44px;line-height:1;margin-bottom:6px}
+.uq-title{font-size:21px;font-weight:800;color:#111;letter-spacing:.5px}
+body[data-theme="dark"] .uq-title{color:#f2f2f2}
+.uq-sub{font-size:13.5px;color:#4d6bfe;font-weight:600;margin-top:8px}
+.uq-demo{margin-top:16px;background:#f5f7ff;border-radius:14px;padding:12px 10px;text-align:left}
+body[data-theme="dark"] .uq-demo{background:#252a3d}
+.uq-demo-l{font-size:10.5px;color:#9aa3b8;margin-bottom:5px;letter-spacing:.5px}
+.uq-demo-t{font-size:11.5px;color:#5b6478;line-height:1.6;word-break:break-all}
+body[data-theme="dark"] .uq-demo-t{color:#a8b0c4}
+.uq-steps{margin-top:16px;text-align:left}
+.uq-s{display:flex;align-items:center;gap:10px;font-size:13.5px;color:#333;
+  padding:7px 0;line-height:1.5}
+body[data-theme="dark"] .uq-s{color:#ccc}
+.uq-n{flex:none;width:20px;height:20px;border-radius:50%;background:#4d6bfe;color:#fff;
+  font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.uq-btn{width:100%;margin-top:18px;padding:13px;border-radius:14px;border:0;
+  background:linear-gradient(135deg,#4d6bfe,#6b5bff);color:#fff;font-size:15px;font-weight:700;
+  letter-spacing:.5px;box-shadow:0 6px 18px rgba(77,107,254,.32)}
+.uq-foot{font-size:11px;color:#aaa;margin-top:12px}
+</style>
 <div class="edit-mask" id="editMask"></div>
 <div class="editpanel" id="editPanel">
   <div class="ep-head">
@@ -922,7 +973,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:17';
+var APP_VERSION='2026-11-23 16:18';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1551,6 +1602,57 @@ function applyEdit(idx, newText, newImgs){
 /* ================= 抽屉 ================= */
 var multiMode=false, multiSel=new Set(), searchQ='';
 // 搜索结果左侧的对话图标
+// ===== 用量与费用估算（按 DeepSeek 官方价，元/百万 token）=====
+function isPeakTime(){
+  // 高峰：北京时间 周一至周五 9:00-12:00、14:00-18:00
+  var d = new Date();
+  var wd = d.getDay();                 // 0=周日 6=周六
+  if(wd === 0 || wd === 6) return false;
+  var h = d.getHours() + d.getMinutes()/60;
+  return (h >= 9 && h < 12) || (h >= 14 && h < 18);
+}
+
+function calcCost(u, model){
+  if(!u) return 0;
+  var peak = isPeakTime();
+  var isPro = /pro/i.test(String(model||''));
+  // 每百万 token 单价
+  var p = isPro
+    ? { hit: peak?0.30:0.15, miss: peak?9.0:4.5, out: peak?27.0:13.5 }
+    : { hit: peak?0.04:0.02, miss: peak?2.0:1.0, out: peak?8.0:4.0 };
+  var hit  = u.prompt_cache_hit_tokens  || 0;
+  var miss = u.prompt_cache_miss_tokens;
+  if(miss == null) miss = Math.max(0, (u.prompt_tokens||0) - hit);
+  var out  = u.completion_tokens || 0;
+  return (hit*p.hit + miss*p.miss + out*p.out) / 1000000;
+}
+
+function fmtNum(n){
+  n = Math.round(n||0);
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// 生成一条回复的用量文字
+function usageLine(u, model){
+  if(!u) return '';
+  var hit  = u.prompt_cache_hit_tokens  || 0;
+  var miss = u.prompt_cache_miss_tokens;
+  if(miss == null) miss = Math.max(0, (u.prompt_tokens||0) - hit);
+  var pin  = u.prompt_tokens || (hit + miss);
+  var out  = u.completion_tokens || 0;
+  var cost = calcCost(u, model);
+
+  var cacheTxt = '';
+  if(hit > 0 && pin > 0){
+    var rate = Math.round(hit / pin * 100);
+    cacheTxt = '（命中 ' + rate + '%）';
+  }
+  var money = cost >= 0.01
+    ? '¥' + cost.toFixed(3)
+    : '¥' + cost.toFixed(5);
+  return '输入 ' + fmtNum(pin) + cacheTxt + ' · 输出 ' + fmtNum(out) + ' · 约 ' + money;
+}
+
 var ICON_CONV = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5a2.5 2.5 0 01-2.5 2.5H8l-3.5 3V6.5A2.5 2.5 0 017 4h10.5A2.5 2.5 0 0120 6.5z"/><path d="M9 9.5h7M9 12.5h4"/></svg>';
 
 // 在一条对话里找出关键词命中的位置，返回带上下文的片段
@@ -1860,7 +1962,12 @@ function renderChat(){
     } else {
       inner = md(cleanOut(m.content||'')) + '';
     }
-    var toolsHtml='<div class="tools"><div class="l">'+
+    var usageHtml = '';
+    if(S.showUsage && m.usage && !streaming){
+      var ul = usageLine(m.usage, m.model);
+      if(ul) usageHtml = '<div class="tokline">'+esc(ul)+'</div>';
+    }
+    var toolsHtml= usageHtml + '<div class="tools"><div class="l">'+
         '<button data-copy="'+idx+'" title="复制">'+ic.copy+'</button>'+
         '<button data-good="'+idx+'" title="有帮助">'+ic.up+'</button>'+
         '<button data-bad="'+idx+'" title="没帮助">'+ic.down+'</button>'+
@@ -3430,7 +3537,7 @@ async function send(text, retryIndex, skipPush){
       }
     }
   }
-  var body={model:model,messages:_msgs,stream:true};
+  var body={model:model,messages:_msgs,stream:true,stream_options:{include_usage:true}};
   var tp=parseFloat(S.temp);
   if(!/reasoner/i.test(model) && !isNaN(tp)) body.temperature=tp;
 
@@ -3493,6 +3600,7 @@ async function send(text, retryIndex, skipPush){
         var data=line.slice(5).trim();
         if(data==='[DONE]') continue;
         var jj; try{ jj=JSON.parse(data); }catch(e){ continue; }
+        if(jj.usage) ai.usage = jj.usage;      // 最后一个 chunk 带用量
         var dl=(jj.choices&&jj.choices[0]&&jj.choices[0].delta)||{};
         if(dl.reasoning_content){ ai.reasoning+=dl.reasoning_content; paint(); }
         if(dl.content){ ai.content+=dl.content; paint(); }
@@ -3672,6 +3780,34 @@ function closeNote(){
 (function(){
   var b = $('#noteBtn');
   if(b) b.addEventListener('click', closeNote);
+})();
+
+/* ================= 用量功能上线提示（只弹一次） ================= */
+var UQ_SEEN = 'dsclone_note_usage_v1';
+
+function showUsageNote(){
+  if(localStorage.getItem(UQ_SEEN)) return;
+  var m = $('#uqMask');
+  if(!m) return;
+  m.classList.add('on');
+}
+function closeUsageNote(){
+  var m = $('#uqMask');
+  if(!m) return;
+  m.classList.remove('on');
+  try{ localStorage.setItem(UQ_SEEN, '1'); }catch(e){}
+}
+(function(){
+  var b = $('#uqOk');
+  if(b) b.addEventListener('click', closeUsageNote);
+
+  // 若声明弹窗正在显示，等它关掉再弹，避免两个窗叠在一起
+  function waitNote(){
+    var nm = $('#noteMask');
+    if(nm && nm.classList.contains('on')){ setTimeout(waitNote, 800); return; }
+    try{ showUsageNote(); }catch(e){}
+  }
+  setTimeout(waitNote, 900);
 })();
 
 /* ================= 支持作者 ================= */
@@ -4418,6 +4554,11 @@ function subThemeSub(){
     '<div class="row"><span class="k">注入时间<div style="font-size:12px;color:var(--fg3);margin-top:2px">把当前日期、星期、时段告诉 AI（玩设定时建议关闭）</div></span><div class="sw '+((S.injectTime===true)?'on':'')+'" data-toggle="injectTime"><i></i></div></div>'+
     '<div class="row"><span class="k">注入设备信息<div style="font-size:12px;color:var(--fg3);margin-top:2px">电量、网络类型</div></span><div class="sw '+(S.injectDevice?'on':'')+'" data-toggle="injectDevice"><i></i></div></div>'+
   '</div>'+
+  '<div class="sec">用量统计</div>'+
+  '<div class="group">'+
+    '<div class="row"><span class="k">显示每条回复的用量<div style="font-size:12px;color:var(--fg3);margin-top:2px">在回复下方显示 token 数与预估费用</div></span><div class="sw '+(S.showUsage?'on':'')+'" data-toggle="showUsage"><i></i></div></div>'+
+  '</div>'+
+  '<div class="hint" style="margin:6px 2px 0;line-height:1.7">开启后每条 AI 回复下方会显示：输入 token（含缓存命中）、输出 token、按官方价格估算的费用。默认关闭。</div>'+
   '<div class="sec">背景与气泡</div>'+
   '<div class="group">'+
     '<div class="row"><span class="k">背景透明度</span><input type="range" id="bgAlpha" min="0" max="100" step="5" value="'+(S.bgAlpha==null?100:S.bgAlpha)+'"><span class="v" id="bgAlphaVal">'+(S.bgAlpha==null?100:S.bgAlpha)+'%</span></div>'+
