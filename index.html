@@ -906,7 +906,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:09';
+var APP_VERSION='2026-11-23 16:13';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1064,9 +1064,25 @@ function saveCurOnly(){
   try{ var c=cur(); if(c) idbSet('conv_'+(c.id||'cur'), c).catch(function(){}); }catch(e){}
 }
 
-// 切后台/关闭前立刻保存一次
-document.addEventListener('visibilitychange', function(){ if(document.hidden) saveC(); });
-window.addEventListener('pagehide', function(){ saveC(); });
+// 紧急快照：切后台/关页面前用 localStorage 同步兜底
+// 原因：IndexedDB 写入是异步的，页面卸载时可能来不及完成，导致最后几条消息丢失
+var EM_KEY = 'dsclone_emergency';
+function emergencySnapshot(){
+  try{
+    var c = cur();
+    if(c && c.id && c.msgs && c.msgs.length){
+      var json = JSON.stringify(c);
+      // 只快照 2MB 以内的对话，避免超出 localStorage 5MB 限制
+      if(json.length < 2 * 1024 * 1024){
+        localStorage.setItem(EM_KEY, json);
+      }
+    }
+  }catch(e){}
+}
+
+// 切后台/关闭前：异步写 IndexedDB + 同步写 localStorage 快照，双保险
+document.addEventListener('visibilitychange', function(){ if(document.hidden){ saveC(); emergencySnapshot(); } });
+window.addEventListener('pagehide', function(){ saveC(); emergencySnapshot(); });
 function toast(m){
   var el=$('#toast'); el.textContent=m; el.classList.add('on');
   clearTimeout(el._t); el._t=setTimeout(function(){ el.classList.remove('on'); },1800);
@@ -2134,6 +2150,58 @@ function bytesToBase64(bytes){
 }
 
 // 把 DeepSeek 官方导出的会话 json 转成我们的结构
+// 从 URL / 路径里取出文件名（去掉 query 和目录）
+function imgBaseName(src){
+  return String(src || '').split('?')[0].split('#')[0].split('/').pop().trim();
+}
+
+// 从一条消息里尽可能提取图片引用（文件名/URL），容错多种结构
+function extractImgRefs(m){
+  var refs = [];
+  if(!m) return refs;
+
+  // 1) fragments 里的图片类型
+  (m.fragments || []).forEach(function(f){
+    var t = (f.type || '').toUpperCase();
+    if(t === 'IMAGE' || t === 'IMG' || t === 'ATTACHMENT' || t === 'FILE' || t === 'IMAGE_URL'){
+      var src = f.content || f.url || f.file_name || f.name || f.image_url || f.src || f.path || f.href || '';
+      if(src) refs.push(String(src));
+    }
+  });
+
+  // 2) 消息级字段（files / attachments / images / image_urls）
+  ['files', 'attachments', 'images', 'image_urls', 'imageIds', 'image_ids'].forEach(function(k){
+    var v = m[k];
+    if(Array.isArray(v)){
+      v.forEach(function(item){
+        if(typeof item === 'string' && item){ refs.push(item); }
+        else if(item && typeof item === 'object'){
+          var s2 = item.name || item.file_name || item.url || item.src || item.path || item.content || item.id || '';
+          if(s2) refs.push(String(s2));
+        }
+      });
+    } else if(typeof v === 'string' && v){
+      refs.push(v);
+    }
+  });
+
+  // 3) 纯文本里出现的图片路径（形如 xxx.png / xxx.webp 的文件名）
+  var txt = '';
+  if(typeof m.content === 'string') txt = m.content;
+  else if(Array.isArray(m.fragments)){
+    m.fragments.forEach(function(f){ if(typeof f.content === 'string') txt += f.content; });
+  }
+  if(txt){
+    var re = /[\w\-.]+?\.(?:png|jpe?g|webp|gif|bmp)/gi;
+    var m2 = txt.match(re);
+    if(m2) m2.forEach(function(x){ refs.push(x); });
+  }
+
+  // 去重，保持顺序
+  var seen = {};
+  return refs.filter(function(r){ if(seen[r]) return false; seen[r] = true; return true; });
+}
+
 function dsSessionToConv(obj){
   var msgs = [], i, j;
   var list = obj.messages || obj.chat_messages || [];
@@ -2153,7 +2221,10 @@ function dsSessionToConv(obj){
     if(!text && typeof m.content === 'string') text = m.content;
 
     if(role === 'USER'){
-      msgs.push({role:'user', content:text});
+      var um = {role:'user', content:text};
+      var _refs = extractImgRefs(m);
+      if(_refs.length) um._imgRefs = _refs;
+      msgs.push(um);
     } else if(role === 'ASSISTANT'){
       var mm = {role:'ai', content:text};
       if(think){ mm.reasoning = think; mm.think = true; if(thinkSec) mm.thinkSec = thinkSec; }
@@ -2279,11 +2350,11 @@ async function importDeepSeekZip(file, onProgress){
       var conv = dsSessionToConv(obj);
       if(!conv){ skipped++; continue; }
 
-      // 处理附件图片
+      // 处理附件图片：先读所有图建立 文件名→dataURL 映射，再按消息引用分配
       var sessId = obj.id || '';
       var atts = filesBySession[sessId] || [];
       if(atts.length){
-        var imgs = [];
+        var imgMap = {};
         var attLimit = Math.min(atts.length, 30);
         for(var a = 0; a < attLimit; a++){
           if(onProgress) onProgress({stage:'image', cur:i + 1, total:total, imgCur:a + 1, imgTotal:attLimit, imported:imported});
@@ -2293,18 +2364,42 @@ async function importDeepSeekZip(file, onProgress){
             var isWebp = /webp$/i.test(atts[a].name) || (b[0]===0x52 && b[1]===0x49 && b[8]===0x57);
             var isJpg = b[0]===0xFF && b[1]===0xD8;
             var isPng = b[0]===0x89 && b[1]===0x50;
-            if(isWebp || isJpg || isPng){
-              if(b.length < 900*1024){
-                var mime = isWebp ? 'image/webp' : (isJpg ? 'image/jpeg' : 'image/png');
-                imgs.push('data:' + mime + ';base64,' + bytesToBase64(b));
-              }
+            if((isWebp || isJpg || isPng) && b.length < 900*1024){
+              var mime = isWebp ? 'image/webp' : (isJpg ? 'image/jpeg' : 'image/png');
+              var bn = imgBaseName(atts[a].name);
+              imgMap[bn] = 'data:' + mime + ';base64,' + bytesToBase64(b);
             }
           }catch(e2){}
         }
-        if(imgs.length){
-          // 挂到最后一条用户消息上
+
+        var usedNames = {};
+        // 按每条消息里记录的引用，把图片挂到正确的消息上
+        conv.msgs.forEach(function(msg){
+          var refs = msg._imgRefs || [];
+          if(!refs.length) return;
+          var imgs = [];
+          refs.forEach(function(ref){
+            var bn = imgBaseName(ref);
+            if(imgMap[bn] && !usedNames[bn]){
+              imgs.push(imgMap[bn]);
+              usedNames[bn] = true;
+            }
+          });
+          if(imgs.length) msg.images = imgs;
+          delete msg._imgRefs;
+        });
+
+        // 没匹配上的图片（引用解析不出），退回挂到最后一条用户消息，避免丢图
+        var leftover = [];
+        Object.keys(imgMap).forEach(function(bn){
+          if(!usedNames[bn]) leftover.push(imgMap[bn]);
+        });
+        if(leftover.length){
           for(var q = conv.msgs.length - 1; q >= 0; q--){
-            if(conv.msgs[q].role === 'user'){ conv.msgs[q].images = imgs; break; }
+            if(conv.msgs[q].role === 'user'){
+              conv.msgs[q].images = (conv.msgs[q].images || []).concat(leftover);
+              break;
+            }
           }
         }
       }
@@ -4161,7 +4256,13 @@ function subFont(){
   }).join('')+'</div>';
 }
 function subThemeSub(){
-  var uc=S.userColor||'#dfe8ff', ac2=S.aiColor||'#232323';
+  // 与 applyTheme 保持一致的主题判断，避免设置页颜色与实际气泡颜色对不上
+  var _th = S.theme;
+  if(_th==='system'){
+    _th = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light':'dark';
+  }
+  var uc=S.userColor||(_th==='light'?'#dfe8ff':'#2d2d2d');
+  var ac2=S.aiColor||(_th==='light'?'#ffffff':'#232323');
   var userSw=['#dfe8ff','#d6e4ff','#bfd4ff','#e6dcff','#dcf2e6','#ffe6cc'];
   var aiSw=['#232323','#2c2c2c','#3a3a4a','#20303c','#33283a','#1f2c24'];
   var bgSw=['','#191919','#101014','#1b1f2a','#e9ecf2','#f7f4ee'];
@@ -4485,6 +4586,9 @@ $('#subScroll').addEventListener('input',function(e){
     var a3=$('#bubbleAlphaVal'); if(a3) a3.textContent=S.bubbleAlpha+'%';
     applyTheme(); return;
   }
+  // 颜色选择器：拖动时实时预览，不重建页面
+  if(e.target.id==='userColorPick'){ S.userColor=e.target.value; saveS(); applyTheme(); return; }
+  if(e.target.id==='aiColorPick'){ S.aiColor=e.target.value; saveS(); applyTheme(); return; }
 });
 $('#subScroll').addEventListener('change',function(e){
   if(e.target.id==='userNameIn'){ S.userName=(e.target.value||'').trim()||'我'; saveS(); renderChat(); return; }
@@ -5291,10 +5395,14 @@ applyLang();
       }
       var mainData = await idbGet('convs').catch(function(){ return null; });
       var cached = await loadConvCaches().catch(function(){ return []; });
+      // 上次关闭时来不及写入 IndexedDB 的紧急快照（localStorage 同步兜底）
+      var em = null;
+      try{ em = JSON.parse(localStorage.getItem(EM_KEY) || 'null'); }catch(e){}
       var all = [];
       if(Array.isArray(mainData)) all = all.concat(mainData);
       if(Array.isArray(cached)) all = all.concat(cached);
       if(Array.isArray(recovered)) all = all.concat(recovered);
+      if(em && em.id && Array.isArray(em.msgs)) all = all.concat([em]);
 
       if(all.length){
         var map={};
@@ -5313,6 +5421,7 @@ applyLang();
                   .sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
         renderConvs(); renderChat(); updateHeadTitle();
         try{ localStorage.removeItem(CK); }catch(e){}
+        try{ localStorage.removeItem(EM_KEY); }catch(e){}
       } else if(convs.length){
         // 首次从 localStorage 迁移
         await idbSet('convs', convs);
