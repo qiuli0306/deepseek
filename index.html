@@ -274,6 +274,22 @@ body[data-theme="light"] .item{color:#1a1a1a}
 .item.on{background:var(--blue-soft);color:var(--blue-txt)}
 body[data-theme="light"] .item.on{background:#e8edff;color:#2f49d9}
 .item span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 搜索结果：标题 + 命中片段 */
+.item.srch{padding:12px 14px}
+.srch-ic{flex:none;width:34px;height:34px;border-radius:50%;background:var(--card2);
+  display:flex;align-items:center;justify-content:center;color:var(--fg3);margin-top:1px}
+.item.on .srch-ic{background:rgba(255,255,255,.2);color:inherit}
+.srch-in{flex:1;min-width:0}
+.srch-top{display:flex;align-items:baseline;gap:10px}
+.srch-t{flex:1;min-width:0;font-size:15.5px;color:var(--fg);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srch-d{flex:none;font-size:11.5px;color:var(--fg3)}
+.srch-s{margin-top:5px;font-size:12.5px;line-height:1.6;color:var(--fg3);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  word-break:break-word}
+.item .hit{font-style:normal;font-weight:600;color:var(--blue-txt);
+  background:rgba(77,107,254,.13);border-radius:3px;padding:0 1px}
+.item.on .hit{background:rgba(255,255,255,.25);color:inherit}
 .item:active{opacity:.7}
 .empty-tip{color:var(--fg3);font-size:13px;text-align:center;padding:30px 0}
 .drawer-foot{border-top:1px solid var(--line);padding:8px}
@@ -906,7 +922,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:13';
+var APP_VERSION='2026-11-23 16:15';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1534,6 +1550,79 @@ function applyEdit(idx, newText, newImgs){
 
 /* ================= 抽屉 ================= */
 var multiMode=false, multiSel=new Set(), searchQ='';
+// 搜索结果左侧的对话图标
+var ICON_CONV = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5a2.5 2.5 0 01-2.5 2.5H8l-3.5 3V6.5A2.5 2.5 0 017 4h10.5A2.5 2.5 0 0120 6.5z"/><path d="M9 9.5h7M9 12.5h4"/></svg>';
+
+// 在一条对话里找出关键词命中的位置，返回带上下文的片段
+function findHitSnippet(c, q){
+  if(!q) return null;
+  var lq = q.toLowerCase();
+  // 优先标题
+  var tt = String(c.title || '');
+  if(tt.toLowerCase().indexOf(lq) >= 0) return { field:'title', text:tt };
+  // 再找消息内容，取最近的一条命中
+  var msgs = c.msgs || [];
+  for(var i = msgs.length - 1; i >= 0; i--){
+    var txt = String((msgs[i] && msgs[i].content) || '');
+    if(!txt) continue;
+    var p = txt.toLowerCase().indexOf(lq);
+    if(p >= 0) return { field:'msg', text:txt, pos:p, len:q.length };
+  }
+  return null;
+}
+
+// 把命中位置前后截成片段，关键词加高亮
+function snippetHtml(hit, q){
+  if(!hit) return '';
+  var txt = hit.text;
+  var pos = hit.pos;
+  var len = hit.len || q.length;
+  if(hit.field === 'title') return '';
+  if(pos == null){
+    pos = txt.toLowerCase().indexOf(q.toLowerCase());
+    if(pos < 0) return '';
+  }
+  var before = 18, after = 50;
+  var start = Math.max(0, pos - before);
+  var end = Math.min(txt.length, pos + len + after);
+  var seg1 = esc(txt.slice(start, pos));
+  var seg2 = esc(txt.slice(pos, pos + len));
+  var seg3 = esc(txt.slice(pos + len, end));
+  // 换行转空格，避免片段断行
+  seg1 = seg1.replace(/\n/g,' '); seg2 = seg2.replace(/\n/g,' '); seg3 = seg3.replace(/\n/g,' ');
+  return (start > 0 ? '…' : '') + seg1 +
+         '<em class="hit">' + seg2 + '</em>' + seg3 +
+         (end < txt.length ? '…' : '');
+}
+
+// 统计这条对话里关键词出现了多少次
+function countHits(c, q){
+  if(!q) return 0;
+  var lq = q.toLowerCase(), n = 0;
+  var t = String(c.title||'').toLowerCase();
+  var i = t.indexOf(lq);
+  while(i >= 0){ n++; i = t.indexOf(lq, i + lq.length); }
+  (c.msgs||[]).forEach(function(m){
+    var txt = String((m&&m.content)||'').toLowerCase();
+    if(!txt) return;
+    var j = txt.indexOf(lq);
+    while(j >= 0){ n++; j = txt.indexOf(lq, j + lq.length); }
+  });
+  return n;
+}
+
+// 相对时间：今天/昨天/N天前/日期
+function relDate(ts){
+  if(!ts) return '';
+  var d = new Date(ts), now = new Date();
+  var day0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  var day1 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  var diff = Math.round((day0 - day1) / 86400000);
+  if(diff <= 0) return '今天';
+  if(diff === 1) return '昨天';
+  if(diff < 7) return diff + '天前';
+  return (d.getMonth()+1) + '月' + d.getDate() + '日';
+}
 function renderConvs(reset){
   var box=$('#convs');
   if(reset) window.__convLimit = 60;
@@ -1558,8 +1647,31 @@ function renderConvs(reset){
   });
   function item(c){
     var sel=multiSel.has(c.id);
-    return '<div class="item'+(c.id===curId?' on':'')+'" data-id="'+c.id+'">'+
-      (multiMode?'<span class="chk'+(sel?' on':'')+'">'+(sel?'✓':'')+'</span>':'')+
+    var chk = multiMode?'<span class="chk'+(sel?' on':'')+'">'+(sel?'✓':'')+'</span>':'';
+
+    // 搜索模式：显示标题 + 命中片段 + 日期
+    if(searchQ){
+      var hit = findHitSnippet(c, searchQ);
+      var snip = hit ? snippetHtml(hit, searchQ) : '';
+      var titleHl = '';
+      if(hit && hit.field === 'title'){
+        // 标题命中：标题本身高亮
+        var lt = String(c.title), lp = lt.toLowerCase().indexOf(searchQ.toLowerCase());
+        titleHl = esc(lt.slice(0,lp)) + '<em class="hit">' + esc(lt.slice(lp, lp+searchQ.length)) + '</em>' + esc(lt.slice(lp+searchQ.length));
+      } else {
+        titleHl = esc(c.title);
+      }
+      var nHits = countHits(c, searchQ);
+      return '<div class="item srch'+(c.id===curId?' on':'')+'" data-id="'+c.id+'">'+chk+
+        '<div class="srch-ic">'+ICON_CONV+'</div>'+
+        '<div class="srch-in">'+
+          '<div class="srch-top"><span class="srch-t">'+titleHl+'</span>'+
+            '<span class="srch-d">'+relDate(c.ts)+(nHits>1?' · '+nHits+' 处':'')+'</span></div>'+
+          (snip ? '<div class="srch-s">'+snip+'</div>' : '')+
+        '</div></div>';
+    }
+
+    return '<div class="item'+(c.id===curId?' on':'')+'" data-id="'+c.id+'">'+chk+
       '<span>'+esc(c.title)+'</span></div>';
   }
   // 分页渲染：一次最多画 60 条，避免上千条 DOM 卡顿
@@ -1576,10 +1688,18 @@ function renderConvs(reset){
     return out;
   }
   var h='';
+  // 搜索时不分「今天/7天内」这些组，直接平铺结果，和官方一致
+  if(searchQ){
+    list.forEach(function(c){
+      if(shown >= LIMIT){ truncated = true; return; }
+      h += item(c); shown++;
+    });
+  } else {
   h += emitGroup(t('pinned'), pinned);
   for(var gi=0; gi<keys.length; gi++){
     if(truncated) break;
     h += emitGroup(keys[gi], groups[keys[gi]]);
+  }
   }
   if(truncated){
     h += '<div id="convMore" style="text-align:center;padding:14px;color:var(--fg3);font-size:13px">上滑加载更多（还有 '+(list.length-shown)+' 条）</div>';
