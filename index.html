@@ -906,7 +906,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 15:56';
+var APP_VERSION='2026-11-23 16:09';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2887,6 +2887,64 @@ function humanError(status, raw){
   return r.slice(0,160);
 }
 
+// ===== 上下文预算：自动截断，避免报「超出上下文上限」 =====
+// 1M token 是理论上限，这里留足余量（图片、思考和输出都要留空间）
+var CTX_BUDGET = 700000;      // 输入预算
+var CTX_MIN_KEEP = 6;         // 至少保留最近 6 条（3 轮对话）
+
+// 粗略估算 token：中文按 1 字 1 token，其他按 4 字符 1 token
+function estTextTokens(txt){
+  if(!txt) return 0;
+  var str = String(txt);
+  var cn = (str.match(/[一-龥]/g) || []).length;
+  var other = str.length - cn;
+  return Math.round(cn * 1.0 + other * 0.28);
+}
+
+function estMsgTokens(m){
+  if(!m) return 0;
+  var n = 0;
+  if(typeof m.content === 'string') n += estTextTokens(m.content);
+  else if(Array.isArray(m.content)){
+    m.content.forEach(function(part){
+      if(part.type === 'text') n += estTextTokens(part.text);
+      else if(part.type === 'image_url') n += 40000;   // 一张图按 4 万 token 估
+    });
+  }
+  return n;
+}
+
+function estArrTokens(arr){
+  var n = 0;
+  for(var i=0;i<arr.length;i++) n += estMsgTokens(arr[i]);
+  return n;
+}
+
+// 超预算就把最早的对话丢掉，system 和最近几轮一定保留
+function trimToBudget(arr, budget){
+  var sysMsgs = [], rest = [], sysTokens = 0;
+  arr.forEach(function(m){
+    if(m.role === 'system'){ sysMsgs.push(m); sysTokens += estMsgTokens(m); }
+    else rest.push(m);
+  });
+
+  var remain = Math.max(2000, budget - sysTokens);
+  var keep = [], total = 0;
+  for(var i = rest.length - 1; i >= 0; i--){
+    var t = estMsgTokens(rest[i]);
+    if(total + t > remain && keep.length >= CTX_MIN_KEEP) break;
+    keep.unshift(rest[i]);
+    total += t;
+    if(total > remain * 1.5) break;   // 极端情况：单条太长，也得停
+  }
+
+  return {
+    messages: sysMsgs.concat(keep),
+    dropped: rest.length - keep.length,
+    used: sysTokens + total
+  };
+}
+
 function buildMessages(c){
   var arr=[];
   // 系统提示词：用户自定义优先，否则默认带「沉浸叙事」预设（可关）
@@ -2927,11 +2985,11 @@ function buildMessages(c){
         });
         if(!keepImgs.length){
           // 全部省略 → 用文字标记代替，保持上下文连贯
-          text += (text ? '\n' : '') + '[图片 ×' + m.images.length + '（已省略以节省长度）]';
+          text += (text ? '\n' : '') + '[图片 ×' + m.images.length + ']';
           arr.push({role:'user', content:text});
         } else {
           if(dropCount > 0){
-            text += (text ? '\n' : '') + '[另有 ' + dropCount + ' 张图片已省略]';
+            text += (text ? '\n' : '') + '[另有 ' + dropCount + ' 张图片]';
           }
           var parts=[];
           if(text) parts.push({type:'text',text:text});
@@ -2960,6 +3018,17 @@ function buildMessages(c){
       }
     }
   }
+  // ===== 自动截断：超出预算就丢掉最早的对话，避免请求被拒 =====
+  var _est = estArrTokens(arr);
+  if(_est > CTX_BUDGET){
+    var _trim = trimToBudget(arr, CTX_BUDGET);
+    arr = _trim.messages;   // 静默截断，不给模型加任何提示语
+    window.__ctxTrimmed = _trim.dropped;
+  } else {
+    window.__ctxTrimmed = 0;
+  }
+  window.__ctxUsed = estArrTokens(arr);
+
   return arr;
 }
 function splitSentences(text){
