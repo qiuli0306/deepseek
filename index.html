@@ -922,7 +922,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:15';
+var APP_VERSION='2026-11-23 16:16';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3104,7 +3104,8 @@ function humanError(status, raw){
 
 // ===== 上下文预算：自动截断，避免报「超出上下文上限」 =====
 // 1M token 是理论上限，这里留足余量（图片、思考和输出都要留空间）
-var CTX_BUDGET = 700000;      // 输入预算
+var CTX_BUDGET = 850000;      // 触发截断的阈值（接近 1M 上限才动手）
+var CTX_RESERVE = 0.70;       // 截断时保留到 70%，留余量给后续几十轮
 var CTX_MIN_KEEP = 6;         // 至少保留最近 6 条（3 轮对话）
 
 // 粗略估算 token：中文按 1 字 1 token，其他按 4 字符 1 token
@@ -3143,14 +3144,19 @@ function trimToBudget(arr, budget){
     else rest.push(m);
   });
 
-  var remain = Math.max(2000, budget - sysTokens);
+  // 关键：截断时一次丢到预算的 70%，留 30% 余量。
+  // 原因：缓存是「前缀匹配」，如果每轮都刚好丢到预算线，前缀每轮都在变，
+  // 缓存一次都命中不了（贵 40 倍）。留余量后，前缀能稳定几十轮不用动。
+  var full = Math.max(2000, budget - sysTokens);
+  var target = Math.floor(full * 0.70);
+
   var keep = [], total = 0;
   for(var i = rest.length - 1; i >= 0; i--){
     var t = estMsgTokens(rest[i]);
-    if(total + t > remain && keep.length >= CTX_MIN_KEEP) break;
+    if(total + t > target && keep.length >= CTX_MIN_KEEP) break;
     keep.unshift(rest[i]);
     total += t;
-    if(total > remain * 1.5) break;   // 极端情况：单条太长，也得停
+    if(total > full) break;   // 极端情况：单条太长，也得停
   }
 
   return {
