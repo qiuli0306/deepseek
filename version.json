@@ -1,8 +1,14 @@
 {
-  "ver": "2026-11-23 11:08",
+  "ver": "2026-11-23 12:26",
   "apk": "deepseek.apk",
   "apkVer": "2.2",
   "log": [
+    {
+      "ver": "2026-11-23 12:26",
+      "notes": [
+        "修复导入备份在部分浏览器报「arrayBuffer is not a function」的问题"
+      ]
+    },
     {
       "ver": "2026-11-23 11:08",
       "notes": [

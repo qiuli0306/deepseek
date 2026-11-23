@@ -906,7 +906,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 11:08';
+var APP_VERSION='2026-11-23 12:26';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2183,11 +2183,24 @@ function yieldToUI(){
 }
 
 // 主导入流程
+// 兼容老内核：Blob.arrayBuffer() 需要 Chrome 76+，没有就用 FileReader
+function blobToBuffer(blob){
+  if(blob && typeof blob.arrayBuffer === 'function'){
+    return blob.arrayBuffer();
+  }
+  return new Promise(function(resolve, reject){
+    var fr = new FileReader();
+    fr.onload = function(){ resolve(fr.result); };
+    fr.onerror = function(){ reject(new Error('读取文件失败')); };
+    fr.readAsArrayBuffer(blob);
+  });
+}
+
 // 从 File 分片读取 zip 目录（大文件也不吃内存）
 async function zipListFromFile(file){
   var tailLen = Math.min(file.size, 66000);
   var tailStart = file.size - tailLen;
-  var tail = new Uint8Array(await file.slice(tailStart, file.size).arrayBuffer());
+  var tail = new Uint8Array(await blobToBuffer(file.slice(tailStart, file.size)));
   var dv = new DataView(tail.buffer);
 
   var eocd = -1;
@@ -2200,7 +2213,7 @@ async function zipListFromFile(file){
   var cdSize  = dv.getUint32(eocd + 12, true);
   var cdOff   = dv.getUint32(eocd + 16, true);
 
-  var cdBuf = new Uint8Array(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  var cdBuf = new Uint8Array(await blobToBuffer(file.slice(cdOff, cdOff + cdSize)));
   var cdv = new DataView(cdBuf.buffer);
   var list = [], p = 0;
   for(var k = 0; k < cdCount; k++){
@@ -2220,13 +2233,13 @@ async function zipListFromFile(file){
 
 // 读取单个条目（只读需要的那一段）
 async function zipReadFromFile(file, entry){
-  var lh = new Uint8Array(await file.slice(entry.lho, entry.lho + 30).arrayBuffer());
+  var lh = new Uint8Array(await blobToBuffer(file.slice(entry.lho, entry.lho + 30)));
   if(lh.length < 30) throw new Error('zip 条目头损坏');
   var ldv = new DataView(lh.buffer);
   var lNameLen  = ldv.getUint16(26, true);
   var lExtraLen = ldv.getUint16(28, true);
   var dataStart = entry.lho + 30 + lNameLen + lExtraLen;
-  var data = new Uint8Array(await file.slice(dataStart, dataStart + entry.compSize).arrayBuffer());
+  var data = new Uint8Array(await blobToBuffer(file.slice(dataStart, dataStart + entry.compSize)));
   if(entry.method === 0) return data;
   if(entry.method === 8){
     var out = await inflateAny(data);
@@ -4877,7 +4890,7 @@ function pickFontFile(){
     if(f.size > 8*1024*1024){ toast('字体文件超过 8MB，换个小一点的'); return; }
     var name=f.name.replace(/\.[^.]+$/,'');
     try{
-      var buf=await f.arrayBuffer();
+      var buf=await blobToBuffer(f);
       await fontDbPut(name, buf);
       var ok=await registerCustomFont(name);
       if(!ok) throw new Error('load fail');
