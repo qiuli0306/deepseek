@@ -906,7 +906,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 12:26';
+var APP_VERSION='2026-11-23 15:08';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -4149,6 +4149,7 @@ function subMore(){
   '<div class="group">'+
     '<div class="row"><span class="k">当前模型</span><input type="text" id="mModel" value="'+esc(S.model||S.fastModel)+'" placeholder="deepseek-flash"></div>'+
     '<div class="row"><span class="k">'+t('temp')+'</span><input type="text" id="mTemp" value="'+esc(S.temp)+'"></div>'+
+    '<div class="hint" style="margin:6px 2px 0;line-height:1.75">写代码 0.3 · 日常问答 0.7 · 角色扮演 1.2 · 头脑风暴 1.5<br>数值越低越稳定准确，越高越有变化但也更容易跑偏</div>'+
   '</div>'+
   '<div class="hint">默认 deepseek-flash。想换模型直接改这里（换服务商请同时改 Base URL）。「深度思考」开关只决定是否展示思考链，模型本身支持时才会出现。</div>'+
   '<div class="hint" style="padding-top:4px">联网搜索由输入框上方的「智能搜索」开关控制，无需在此设置。</div>'+
