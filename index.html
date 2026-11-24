@@ -293,6 +293,13 @@ body[data-theme="light"] .item.on{background:#e8edff;color:#2f49d9}
 .item:active{opacity:.7}
 .empty-tip{color:var(--fg3);font-size:13px;text-align:center;padding:30px 0}
 /* 每条回复的用量行 */
+.versw{display:flex;align-items:center;gap:2px;margin-right:8px;font-size:12.5px;
+  color:var(--fg3);flex:0 0 auto}
+.versw button{display:flex;align-items:center;justify-content:center;width:22px;height:22px;
+  border:0;background:none;color:var(--fg3);padding:0;border-radius:6px}
+.versw button:active{background:var(--card2)}
+.versw button:disabled{opacity:.28}
+.versw span{min-width:28px;text-align:center;font-variant-numeric:tabular-nums}
 .tokline{margin:7px 0 3px;font-size:11.5px;line-height:1.5;color:var(--fg3);
   letter-spacing:.2px;user-select:text;-webkit-user-select:text}
 .style-bubble .tokline{padding-left:2px}
@@ -973,7 +980,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:22';
+var APP_VERSION='2026-11-23 16:25';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2051,6 +2058,8 @@ function renderChat(){
       return;
     }
     var streaming = busy && isLastMsg(c,m);
+    // 非生成中的消息：按当前选中的版本显示
+    if(!streaming) syncMsgContent(m);
     var parts = null;
     if(S.waifu && S.chatStyle==='bubble'){
       var segs = m.segs;
@@ -2076,7 +2085,22 @@ function renderChat(){
       var ul = usageLine(m.usage, m.model);
       if(ul) usageHtml = '<div class="tokline">'+esc(ul)+'</div>';
     }
-    var toolsHtml= usageHtml + '<div class="tools"><div class="l">'+
+    // 版本切换器：< 3/3 >，放在最左（和官方一致）
+    var verHtml = '';
+    var _vers2 = msgVersions(m);
+    if(!streaming && _vers2.length > 1){
+      var _vi2 = msgVerIdx(m);
+      verHtml = '<div class="versw">'+
+        '<button data-ver="'+idx+':-1"' + (_vi2<=0 ? ' disabled' : '') + '>'+
+          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>'+
+        '</button>'+
+        '<span>'+(_vi2+1)+'/'+_vers2.length+'</span>'+
+        '<button data-ver="'+idx+':1"' + (_vi2>=_vers2.length-1 ? ' disabled' : '') + '>'+
+          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'+
+        '</button>'+
+      '</div>';
+    }
+    var toolsHtml= usageHtml + '<div class="tools"><div class="l">'+ verHtml +
         '<button data-copy="'+idx+'" title="复制">'+ic.copy+'</button>'+
         '<button data-good="'+idx+'" title="有帮助">'+ic.up+'</button>'+
         '<button data-bad="'+idx+'" title="没帮助">'+ic.down+'</button>'+
@@ -2657,6 +2681,211 @@ async function zipReadFromFile(file, entry){
     return new Uint8Array(out);
   }
   throw new Error('不支持的压缩方式');
+}
+
+// ===== 从 DeepSeek 分享链接导入单个对话 =====
+function canUseLinkImport(){
+  // 只有 APK（有本地代理）能绕过 CORS
+  return !!window.__proxyPort;
+}
+
+function importFromShareLink(){
+  if(!canUseLinkImport()){
+    alert('这个功能只在安卓 App 里可用。\n\n因为浏览器有跨域限制，读不到官方的分享内容。\n\n苹果用户请用下面的「导入 DeepSeek 备份（zip）」整体导入。');
+    return;
+  }
+
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;padding:20px';
+  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:22px 20px;max-width:340px;width:100%">'+
+    '<div style="font-size:16.5px;font-weight:700;margin-bottom:6px">导入单个对话</div>'+
+    '<div style="font-size:12.5px;color:#888;line-height:1.6;margin-bottom:14px">粘贴 DeepSeek 官方的分享链接，只会导入这一个对话</div>'+
+    '<textarea id="shareUrlIn" placeholder="https://chat.deepseek.com/share/xxxxx" style="width:100%;height:76px;box-sizing:border-box;border:1px solid #e3e6ec;border-radius:10px;padding:10px;font-size:13px;line-height:1.5;resize:none;outline:none"></textarea>'+
+    '<div id="shareMsg" style="font-size:12px;color:#d93025;margin-top:8px;min-height:16px"></div>'+
+    '<button id="shareGo" style="width:100%;padding:12px;border:0;border-radius:12px;background:#4d6bfe;color:#fff;font-size:15px;font-weight:600;margin-top:6px">导入</button>'+
+    '<button id="shareCancel" style="width:100%;padding:11px;border:0;border-radius:12px;background:#f1f3f6;color:#666;font-size:14px;margin-top:8px">取消</button>'+
+    '</div>';
+  document.body.appendChild(mask);
+
+  var inp = mask.querySelector('#shareUrlIn');
+  var msg = mask.querySelector('#shareMsg');
+  var go = mask.querySelector('#shareGo');
+
+  var close = function(){ try{ document.body.removeChild(mask); }catch(e){} };
+  mask.querySelector('#shareCancel').onclick = close;
+
+  go.onclick = async function(){
+    var raw = (inp.value || '').trim();
+    if(!raw){ msg.textContent = '请先粘贴链接'; return; }
+
+    var m = raw.match(/share\/([A-Za-z0-9_-]+)/);
+    if(!m){ msg.textContent = '链接格式不对，应该长这样：https://chat.deepseek.com/share/xxxxx'; return; }
+    var shareId = m[1];
+
+    go.disabled = true;
+    go.textContent = '正在读取…';
+    msg.style.color = '#4d6bfe';
+    msg.textContent = '正在获取对话内容…';
+
+    try{
+      var conv = await fetchShareConversation(shareId, function(txt){
+        msg.textContent = txt;
+      });
+      if(!conv || !conv.msgs.length) throw new Error('这个分享里没有可导入的内容');
+
+      // 合并进列表
+      var exist = false;
+      convs.forEach(function(c){ if(c.id === conv.id) exist = true; });
+      if(!exist){
+        convs.unshift(conv);
+        convs.sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+      }
+      await idbSet('conv_' + conv.id, conv).catch(function(){});
+      saveListNow();
+      renderConvs(); updateHeadTitle();
+      if(typeof markBackupDone === 'function'){ /* 导入不改备份时间 */ }
+
+      msg.style.color = '#1e8e3e';
+      msg.textContent = '导入成功：' + conv.msgs.length + ' 条消息';
+      go.textContent = '完成';
+      setTimeout(close, 900);
+      toast('已导入「' + (conv.title||'分享的对话') + '」');
+    }catch(err){
+      go.disabled = false;
+      go.textContent = '重试';
+      msg.style.color = '#d93025';
+      msg.textContent = '导入失败：' + (err && err.message || err);
+    }
+  };
+}
+
+// 拉取并转换成我们的对话格式
+async function fetchShareConversation(shareId, onStatus){
+  var api = 'https://chat.deepseek.com/api/v0/share/content?share_id=' + encodeURIComponent(shareId);
+  var res = await apiFetch(api, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Referer': 'https://chat.deepseek.com/'
+    }
+  });
+  if(!res.ok){
+    if(res.status === 429) throw new Error('请求太频繁，等一分钟再试');
+    if(res.status === 404) throw new Error('分享不存在或已失效');
+    throw new Error('接口返回 ' + res.status);
+  }
+  var j = await res.json();
+  var bd = j && j.data && j.data.biz_data;
+  if(!bd || !Array.isArray(bd.messages)) throw new Error('返回数据格式不对');
+
+  var msgs = [];
+  var imgTasks = [];   // 待下载的图片
+
+  bd.messages.forEach(function(m){
+    var role = String(m.role || '').toUpperCase();
+    var text = '', think = '', thinkSec = 0, imgs = [];
+
+    (m.fragments || []).forEach(function(f){
+      var t = String(f.type || '').toUpperCase();
+      if(t === 'THINK'){
+        think += (f.content || '');
+        if(f.elapsed_secs) thinkSec = Math.round(f.elapsed_secs);
+      } else if(t === 'RESPONSE' || t === 'REQUEST' || t === 'TEXT'){
+        text += (f.content || '');
+      } else if(t === 'FILE'){
+        (f.files || []).forEach(function(fl){
+          if(fl && fl.is_image && fl.signed_path){
+            imgTasks.push({ msgIndex: msgs.length, path: fl.signed_path });
+            imgs.push(null);   // 占位，稍后填入
+          }
+        });
+      }
+      // SEARCH 等跳过
+    });
+
+    if(role === 'USER'){
+      var um = { role:'user', content:text };
+      if(imgs.length) um.images = imgs;
+      msgs.push(um);
+    } else if(role === 'ASSISTANT'){
+      var am = { role:'ai', content:text };
+      if(think){ am.reasoning = think; am.think = true; if(thinkSec) am.thinkSec = thinkSec; }
+      msgs.push(am);
+    }
+  });
+
+  // 下载图片
+  if(imgTasks.length && onStatus){
+    onStatus('正在下载图片 0/' + imgTasks.length + '…');
+    var done = 0;
+    for(var i = 0; i < imgTasks.length; i++){
+      var task = imgTasks[i];
+      try{
+        var b64 = await fetchShareImage(task.path);
+        if(b64){
+          var target = msgs[task.msgIndex];
+          if(target && target.images){
+            var slot = target.images.indexOf(null);
+            if(slot >= 0) target.images[slot] = b64;
+            else target.images.push(b64);
+          }
+        }
+      }catch(e){ /* 单张失败不影响整体 */ }
+      done++;
+      if(onStatus) onStatus('正在下载图片 ' + done + '/' + imgTasks.length + '…');
+      await yieldToUI();
+    }
+  }
+
+  // 清理空图片槽
+  msgs.forEach(function(m){
+    if(m.images){
+      m.images = m.images.filter(function(x){ return !!x; });
+      if(!m.images.length) delete m.images;
+    }
+  });
+
+  msgs = msgs.filter(function(x){ return (x.content && x.content.trim()) || (x.images && x.images.length); });
+  if(!msgs.length) throw new Error('没有可导入的消息');
+
+  // 标题用第一条用户消息
+  var title = '分享的对话';
+  for(var k = 0; k < msgs.length; k++){
+    if(msgs[k].role === 'user' && msgs[k].content){
+      title = msgs[k].content.replace(/\s+/g,' ').trim().slice(0, 20);
+      break;
+    }
+  }
+
+  return {
+    id: 'sh_' + shareId,
+    title: title || '分享的对话',
+    ts: Date.now(),
+    msgs: msgs,
+    titleGen: 2,
+    titleManual: true
+  };
+}
+
+// 下载分享里的单张图片
+async function fetchShareImage(signedPath){
+  var url = 'https://files.deepseeksvc.com/api' + signedPath + '&ty=p&fmt=webp';
+  var res = await apiFetch(url, {
+    method: 'GET',
+    headers: {
+      'Accept': 'image/webp,image/*,*/*',
+      'Referer': 'https://chat.deepseek.com/'
+    }
+  });
+  if(!res.ok) return null;
+  var blob = await res.blob();
+  if(!blob || !blob.size || blob.size > 3 * 1024 * 1024) return null;   // 超过 3MB 不存
+  return await new Promise(function(resolve){
+    var fr = new FileReader();
+    fr.onload = function(){ resolve(String(fr.result || '')); };
+    fr.onerror = function(){ resolve(null); };
+    fr.readAsDataURL(blob);
+  });
 }
 
 async function importDeepSeekZip(file, onProgress){
@@ -3498,6 +3727,28 @@ function trimToBudget(arr, budget){
   };
 }
 
+// ===== 多版本回复：读取当前显示内容 =====
+function msgVersions(m){
+  if(m && Array.isArray(m.versions) && m.versions.length) return m.versions;
+  return [ (m && m.content) || '' ];
+}
+function msgVerIdx(m){
+  var v = msgVersions(m);
+  var i = (m && typeof m.vIdx === 'number') ? m.vIdx : 0;
+  return Math.max(0, Math.min(i, v.length - 1));
+}
+function msgCurContent(m){
+  var v = msgVersions(m);
+  return v[msgVerIdx(m)] || '';
+}
+// 把 versions/vIdx 同步到 content，渲染时就无需到处改
+function syncMsgContent(m){
+  if(!m || m.role !== 'assistant') return;
+  if(Array.isArray(m.versions) && m.versions.length){
+    m.content = msgCurContent(m);
+  }
+}
+
 function buildMessages(c){
   var arr=[];
   // 系统提示词：用户自定义优先，否则默认带「沉浸叙事」预设（可关）
@@ -3697,7 +3948,23 @@ async function send(text, retryIndex, skipPush){
   var isNew=false;
   if(!c){ c={id:String(Date.now()),title:'',msgs:[],ts:Date.now()}; convs.unshift(c); curId=c.id; isNew=true; }
 
-  if(retryIndex!=null){ c.msgs=c.msgs.slice(0,retryIndex); }
+  var _regenTarget = null;
+  if(retryIndex!=null){
+    var _old = c.msgs[retryIndex];
+    if(_old && _old.role === 'assistant'){
+      // 多版本模式：保留这条消息，把旧内容存进 versions
+      var _vers = (Array.isArray(_old.versions) && _old.versions.length)
+        ? _old.versions.slice()
+        : [ _old.content || '' ];
+      _old.versions = _vers;
+      _old.vIdx = _vers.length - 1;
+      // 保留到这条为止，后面的都删掉（本来就要重新生成）
+      c.msgs = c.msgs.slice(0, retryIndex + 1);
+      _regenTarget = _old;
+    } else {
+      c.msgs = c.msgs.slice(0, retryIndex);
+    }
+  }
   else if(skipPush){ /* 编辑场景：复用已改写的用户消息 */ }
   else{
     c.msgs.push({
@@ -3718,8 +3985,23 @@ async function send(text, retryIndex, skipPush){
   }
 
   var model = S.model || S.fastModel;
-  var ai={role:'assistant',content:'',reasoning:'',model:model,ts:Date.now(),segs:null,shown:null,think:!!S.think};
-  c.msgs.push(ai); c.ts=Date.now();
+  var ai;
+  if(_regenTarget){
+    // 复用原消息，清空内容重新生成
+    ai = _regenTarget;
+    ai.content = '';
+    ai.reasoning = '';
+    ai.usage = null;
+    ai.segs = null;
+    ai.shown = null;
+    ai.model = model;
+    ai.ts = Date.now();
+    ai.think = !!S.think;
+  } else {
+    ai = {role:'assistant',content:'',reasoning:'',model:model,ts:Date.now(),segs:null,shown:null,think:!!S.think};
+    c.msgs.push(ai);
+  }
+  c.ts=Date.now();
   saveC(); renderConvs(); renderChat(); updateHeadTitle(); setBusy(true); autoScroll=true;
 
   var _searchCtx='';
@@ -3853,6 +4135,13 @@ async function send(text, retryIndex, skipPush){
   }finally{
     ac=null; setBusy(false);
     c.ts=Date.now();
+    // 多版本收尾：把这次生成的内容存进 versions，并指向它
+    if(_regenTarget && ai.content && ai.content !== t('stop')){
+      if(!Array.isArray(ai.versions)) ai.versions = [];
+      var _last = ai.versions[ai.versions.length-1];
+      if(ai.content !== _last) ai.versions.push(ai.content);
+      ai.vIdx = ai.versions.length - 1;
+    }
     var doWaifu = S.waifu && S.chatStyle==='bubble' && ai.content && ai.content.indexOf('```')<0;
     if(doWaifu){ ai.segs=splitSentences(ai.content); ai.shown=1; }
     saveC(); renderConvs(); updateHeadTitle(); renderChat();
@@ -4245,6 +4534,27 @@ document.addEventListener('click',async function(e){
     }
     return;
   }
+  var vs=e.target.closest('[data-ver]');
+  if(vs){
+    if(busy) return;
+    var _p = String(vs.dataset.ver).split(':');
+    var _mi = +_p[0], _dir = +_p[1];
+    var _cc = cur();
+    if(_cc && _cc.msgs[_mi]){
+      var _m = _cc.msgs[_mi];
+      var _vv = msgVersions(_m);
+      var _ni = msgVerIdx(_m) + _dir;
+      if(_ni >= 0 && _ni < _vv.length){
+        _m.vIdx = _ni;
+        _m.content = _vv[_ni];
+        _m.segs = null; _m.shown = null;
+        saveC();
+        renderChat();
+      }
+    }
+    return;
+  }
+
   var rt=e.target.closest('[data-retry]');
   if(rt){ if(!busy) send('',+rt.dataset.retry); return; }
 
@@ -4470,7 +4780,7 @@ $('#convMenu').addEventListener('click',function(e){
       if(v){ c.title=v.slice(0,40); c.titleGen=2; c.titleManual=true; saveC(); renderConvs(); updateHeadTitle(); }
     });
   }
-  if(act==='pin'){ c.pinned=!c.pinned; saveC(); renderConvs(); }
+  if(act==='pin'){ c.pinned=!c.pinned; saveC(); saveListNow(); renderConvs(); updateHeadTitle(); }
   if(act==='multi'){ multiMode=true; multiSel=new Set([id]); renderConvs(); }
   if(act==='del'){
     if(!confirm('删除这条对话？')) return;
@@ -4900,6 +5210,9 @@ function subData(){
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
   '<div style="height:8px"></div>'+
+  '<button class="btn" id="mImportLink">从分享链接导入单个对话（仅安卓）</button>'+
+  '<div class="hint" style="margin:6px 2px 0">粘贴官方分享链接，只导入这一个对话，含图片。苹果用户请用下面那个整体导入。</div>'+
+  '<div style="height:8px"></div>'+
   '<button class="btn" id="mImportDS">导入 DeepSeek 备份（zip）</button>'+
   '<div class="hint" style="margin:6px 2px 0">从 DeepSeek 官方 App「设置 → 数据管理 → 导出所有历史对话」下载的 zip，直接选这个文件。对话、思考过程、图片都会导入，多少条都不卡。</div>'+
   '<div style="height:8px"></div>'+
@@ -5011,6 +5324,7 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='mExportTxt'){ exportText(true); return; }
   if(e.target.id==='mExportTxtAll'){ exportText(false); markBackupDone(); return; }
   if(e.target.id==='mExport'){ exportAll(); markBackupDone(); return; }
+  if(e.target.id==='mImportLink'){ importFromShareLink(); return; }
   if(e.target.id==='mImportDS'){ pickDeepSeekBackup(); return; }
   if(e.target.id==='mShrinkImgs'){ shrinkAllImages(); return; }
   if(e.target.id==='mDiag'){ runStorageDiag(); return; }
@@ -5915,16 +6229,21 @@ applyLang();
 
       if(all.length){
         var map={};
-        all.forEach(function(c){
+        // 合并规则：取消息更多的那个，但 pinned 只要有一方为 true 就保留
+        // 原因：列表里存了 pinned，单条数据里也有 pinned，两边取最新时不能互相覆盖
+        function mergeConv(c){
           if(!c||!c.id) return;
           var o=map[c.id];
-          if(!o || ((c.msgs||[]).length >= (o.msgs||[]).length)) map[c.id]=c;
-        });
-        convs.forEach(function(c){
-          if(!c||!c.id) return;
-          var o=map[c.id];
-          if(!o || ((c.msgs||[]).length >= (o.msgs||[]).length)) map[c.id]=c;
-        });
+          if(!o){ map[c.id]=c; return; }
+          var cLen=(c.msgs||[]).length, oLen=(o.msgs||[]).length;
+          var keep = (cLen >= oLen) ? c : o;
+          keep.pinned = !!(c.pinned || o.pinned);
+          if(c.titleManual || o.titleManual) keep.titleManual = true;
+          if(c.titleGen && !keep.titleGen) keep.titleGen = c.titleGen;
+          map[c.id] = keep;
+        }
+        all.forEach(mergeConv);
+        convs.forEach(mergeConv);
         convs = Object.keys(map).map(function(k){ return map[k]; })
                   .filter(function(c){ return Array.isArray(c.msgs); })
                   .sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
