@@ -1033,7 +1033,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:42';
+var APP_VERSION='2026-11-23 16:43';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2744,6 +2744,20 @@ async function zipReadFromFile(file, entry){
 }
 
 // ===== 从 DeepSeek 分享链接导入单个对话 =====
+// 从分享链接或 API 地址里提取 share_id
+function extractShareId(raw){
+  var t = String(raw || '').trim();
+  // 优先：API 地址里的 share_id 参数
+  var am = t.match(/[?&]share_id=([A-Za-z0-9_-]+)/);
+  if(am) return am[1];
+  // 其次：/share/xxxxx（排除 /share/content 这种接口路径）
+  var sm = t.match(/\/share\/([A-Za-z0-9_-]+)/);
+  if(sm && sm[1] !== 'content' && sm[1] !== 'create') return sm[1];
+  // 最后：裸的 id
+  if(/^[A-Za-z0-9]{10,30}$/.test(t)) return t;
+  return '';
+}
+
 function importFromShareLink(){
   var isApp = !!window.__proxyPort;
 
@@ -2783,13 +2797,15 @@ function importFromShareLink(){
           '<button id="shareFromClip" style="flex:1;padding:11px;border:0;border-radius:11px;background:#f1f3f6;color:#444;font-size:13.5px">从剪贴板读取</button>'+
           '<button id="sharePasteGo" style="flex:1;padding:11px;border:0;border-radius:11px;background:#4d6bfe;color:#fff;font-size:13.5px;font-weight:600">解析导入</button>'+
         '</div>'+
-        '<div style="height:8px"></div>'+
+        '<div style="font-size:11px;color:#a0a5b0;line-height:1.7;margin-top:7px">适合 50 条以内的短对话。太长会复制不全。</div>'+
+        '<div style="height:10px"></div>'+
         '<button id="sharePickFile" style="width:100%;padding:11px;border:0;border-radius:11px;background:#eef7ee;color:#1e8e3e;font-size:13.5px;font-weight:600">选择文件导入（.mht / .html / .json）</button>'+
-        '<div style="font-size:11px;color:#999;line-height:1.7;margin-top:6px">保存网页后的 .mht 文件通常在「文件管理 → 下载」里，选它即可。</div>'+
+        '<div style="font-size:11px;color:#a0a5b0;line-height:1.7;margin-top:7px">长对话建议用这个。保存网页后的 .mht 文件通常在「文件管理 → 下载」里。</div>'+
+        '<div style="font-size:11px;color:#a0a5b0;line-height:1.75;margin-top:12px;padding-top:11px;border-top:1px solid #f0f1f4">'+
+          '想在 App 里一键导入需要改底层代码，工程量大、风险高，暂时只能用上面浏览器的方式，请谅解。'+
+        '</div>'+
       '</div>'+
 
-      // App 内直连（有代理时）
-      (isApp ? '<div style="height:12px"></div><button id="shareDirect" style="width:100%;padding:11px;border:0;border-radius:11px;background:#eef7ee;color:#1e8e3e;font-size:13.5px;font-weight:600">直接用链接导入（App 内）</button>' : '')+
 
       '<div id="shareMsg" style="font-size:12px;color:#d93025;margin-top:10px;min-height:16px;line-height:1.6;white-space:pre-line"></div>'+
       '<button id="shareCancel" style="width:100%;padding:11px;border:0;border-radius:12px;background:#f1f3f6;color:#666;font-size:14px;margin-top:6px">取消</button>'+
@@ -2816,9 +2832,9 @@ function importFromShareLink(){
   mask.querySelector('#shareMake').onclick = function(){
     var raw = (mask.querySelector('#shareUrlIn').value || '').trim();
     if(!raw){ setMsg('请先粘贴分享链接'); return; }
-    var m2 = raw.match(/share\/([A-Za-z0-9_-]+)/);
-    if(!m2){ setMsg('链接格式不对，应该长这样：https://chat.deepseek.com/share/xxxxx'); return; }
-    curShareId = m2[1];
+    var sid = extractShareId(raw);
+    if(!sid){ setMsg('链接格式不对，应该长这样：https://chat.deepseek.com/share/xxxxx'); return; }
+    curShareId = sid;
     var apiUrl = 'https://chat.deepseek.com/api/v0/share/content?share_id=' + curShareId;
     apiUrlEl.textContent = apiUrl;
     apiBox.style.display = '';
@@ -2894,22 +2910,6 @@ function importFromShareLink(){
       setMsg('已读取，点「解析导入」继续', true);
     }catch(e){
       setMsg('读取剪贴板失败（可能没给权限），请长按输入框手动粘贴');
-    }
-  };
-
-  // App 内直连
-  var sd = mask.querySelector('#shareDirect');
-  if(sd) sd.onclick = async function(){
-    var raw = (mask.querySelector('#shareUrlIn').value || '').trim();
-    var m3 = raw.match(/share\/([A-Za-z0-9_-]+)/);
-    if(!m3){ setMsg('请先粘贴分享链接'); return; }
-    sd.disabled = true; sd.textContent = '正在读取…';
-    try{
-      var conv = await fetchShareConversation(m3[1], function(t){ setMsg(t, true); });
-      finishImport(conv, close, setMsg);
-    }catch(err){
-      sd.disabled = false; sd.textContent = '直接用链接导入（App 内）';
-      setMsg('直连失败，请用上面的浏览器方式：' + (err && err.message || err));
     }
   };
 
