@@ -973,7 +973,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:20';
+var APP_VERSION='2026-11-23 16:22';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1111,6 +1111,47 @@ function checkStorageSpace(){
       ratio: usage / quota
     };
   }).catch(function(){ return null; });
+}
+
+// ===== 备份提醒：太久没导出就提醒一次 =====
+var BACKUP_KEY = 'dsclone_last_backup_at';
+function markBackupDone(){
+  try{ localStorage.setItem(BACKUP_KEY, String(Date.now())); }catch(e){}
+}
+function remindBackupIfStale(){
+  if(!convs.length) return;
+  var last = 0;
+  try{ last = parseInt(localStorage.getItem(BACKUP_KEY) || '0', 10) || 0; }catch(e){}
+  var days = last ? Math.floor((Date.now() - last) / 86400000) : 999;
+  // 对话少于 3 个不打扰；7 天内备份过不提醒
+  if(convs.length < 3 || days < 7) return;
+  // 每次会话只提醒一次
+  if(sessionStorage.getItem('dsclone_backup_warned')) return;
+  try{ sessionStorage.setItem('dsclone_backup_warned', '1'); }catch(e){}
+
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99997;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:22px';
+  var dayTxt = days === 999 ? '从未备份过' : ('已经 ' + days + ' 天没备份了');
+  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:22px 20px;max-width:330px;width:100%;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35)">'+
+    '<div style="font-size:30px;margin-bottom:8px">💾</div>'+
+    '<div style="font-size:17px;font-weight:700;color:#1a1a1a;margin-bottom:8px">建议备份一下对话</div>'+
+    '<div style="font-size:13.5px;line-height:1.75;color:#555;text-align:left">'+
+      '你有 <b>' + convs.length + '</b> 个对话，' + dayTxt + '。<br><br>'+
+      '对话只存在这台手机上。清理软件、清缓存、换手机都可能让它消失。<br><br>'+
+      '导出一份文件存起来，就永远不怕丢。'+
+    '</div>'+
+    '<button id="bkNow" style="width:100%;padding:12px;border:0;border-radius:12px;background:#4d6bfe;color:#fff;font-size:15px;font-weight:600;margin-top:16px">现在备份</button>'+
+    '<button id="bkLater" style="width:100%;padding:11px;border:0;border-radius:12px;background:#f1f3f6;color:#666;font-size:14px;margin-top:8px">以后再说</button>'+
+    '</div>';
+  document.body.appendChild(mask);
+
+  var bn = document.getElementById('bkNow');
+  if(bn) bn.onclick = function(){
+    try{ document.body.removeChild(mask); }catch(e){}
+    try{ exportAll(); markBackupDone(); }catch(e){}
+  };
+  var bl = document.getElementById('bkLater');
+  if(bl) bl.onclick = function(){ try{ document.body.removeChild(mask); }catch(e){} };
 }
 
 // 空间紧张时提醒（每次打开只提一次）
@@ -1716,7 +1757,9 @@ function usageLine(u, model){
   var money = cost >= 0.01
     ? '¥' + cost.toFixed(3)
     : '¥' + cost.toFixed(5);
-  return '输入 ' + fmtNum(pin) + cacheTxt + ' · 输出 ' + fmtNum(out) + ' · 约 ' + money;
+  // 有未命中时把数字也写出来，方便和官方后台核对
+  var missTxt = (miss > 0) ? '，未命中 ' + fmtNum(miss) : '';
+  return '输入 ' + fmtNum(pin) + cacheTxt + missTxt + ' · 输出 ' + fmtNum(out) + ' · 约 ' + money;
 }
 
 var ICON_CONV = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5a2.5 2.5 0 01-2.5 2.5H8l-3.5 3V6.5A2.5 2.5 0 017 4h10.5A2.5 2.5 0 0120 6.5z"/><path d="M9 9.5h7M9 12.5h4"/></svg>';
@@ -3782,7 +3825,14 @@ async function send(text, retryIndex, skipPush){
         var data=line.slice(5).trim();
         if(data==='[DONE]') continue;
         var jj; try{ jj=JSON.parse(data); }catch(e){ continue; }
-        if(jj.usage) ai.usage = jj.usage;      // 最后一个 chunk 带用量
+        // 用量只在「最后一个 chunk」才可信：带 finish_reason、或没有 choices（纯 usage 包）
+        // 原因：有些代理会在开头塞占位 usage，提前读会得到错误数字
+        if(jj.usage){
+          var _ch = jj.choices && jj.choices[0];
+          var _isFinal = !_ch || _ch.finish_reason || (jj.choices && jj.choices.length === 0);
+          if(_isFinal) ai.usage = jj.usage;
+          else if(!ai.usage) ai.usage = jj.usage;   // 兜底：只有一次机会时也存下
+        }
         var dl=(jj.choices&&jj.choices[0]&&jj.choices[0].delta)||{};
         if(dl.reasoning_content){ ai.reasoning+=dl.reasoning_content; paint(); }
         if(dl.content){ ai.content+=dl.content; paint(); }
@@ -4959,8 +5009,8 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='mSave'||e.target.id==='ttsSave'){ syncInputs(); toast(t('save')); }
   if(e.target.id==='ttsTest'){ syncInputs(); speak('你好，这是一段语音试听。'); }
   if(e.target.id==='mExportTxt'){ exportText(true); return; }
-  if(e.target.id==='mExportTxtAll'){ exportText(false); return; }
-  if(e.target.id==='mExport'){ exportAll(); }
+  if(e.target.id==='mExportTxtAll'){ exportText(false); markBackupDone(); return; }
+  if(e.target.id==='mExport'){ exportAll(); markBackupDone(); return; }
   if(e.target.id==='mImportDS'){ pickDeepSeekBackup(); return; }
   if(e.target.id==='mShrinkImgs'){ shrinkAllImages(); return; }
   if(e.target.id==='mDiag'){ runStorageDiag(); return; }
@@ -5779,6 +5829,9 @@ setTimeout(function(){ checkUpdate(false); }, 2500);
 
 /* 启动时检查存储空间，太满就提醒（防止数据丢失） */
 setTimeout(function(){ try{ warnStorageIfTight(); }catch(e){} }, 1600);
+
+/* 太久没备份也提醒一次 */
+setTimeout(function(){ try{ remindBackupIfStale(); }catch(e){} }, 2400);
 
 
 /* 开屏声明：只弹一次；若正在显示更新日志，等它关闭后再弹，避免两个窗叠加 */
