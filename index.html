@@ -1033,7 +1033,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:37';
+var APP_VERSION='2026-11-23 16:42';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2767,17 +2767,25 @@ function importFromShareLink(){
           '<button id="shareCopyUrl" style="flex:1;padding:10px;border:0;border-radius:10px;background:#f1f3f6;color:#444;font-size:13px">复制地址</button>'+
           '<button id="shareOpenUrl" style="flex:1;padding:10px;border:0;border-radius:10px;background:#4d6bfe;color:#fff;font-size:13px;font-weight:600">打开</button>'+
         '</div>'+
-        '<div style="font-size:11.5px;color:#999;line-height:1.65;margin-top:8px">打开后是一段文字，全选复制；内容多的话用浏览器「下载」存成文件。</div>'+
+        '<div style="font-size:11.5px;color:#666;line-height:1.8;margin-top:9px;background:#fffbeb;border-radius:9px;padding:9px 10px">'+
+          '打开后是一大段文字。复制方法：<br>'+
+          '<b>长按页面任意位置 → 点底部「全选」</b>（没有全选就点「扩选」几次）→ 复制。<br>'+
+          '<span style="color:#999">不用滚到最上面，全选会自动选中整段。</span>'+
+        '</div>'+
       '</div>'+
 
       // 第三步：导入
       '<div id="shareStep3" style="display:none;margin-top:14px">'+
-        '<div style="font-size:13px;font-weight:600;color:#333;margin-bottom:6px">③ 回到这里导入</div>'+
-        '<button id="sharePickFile" style="width:100%;padding:11px;border:0;border-radius:11px;background:#eef1fb;color:#4d6bfe;font-size:14px;font-weight:600">选择 JSON 文件导入（推荐）</button>'+
+        '<div style="font-size:13px;font-weight:600;color:#333;margin-bottom:6px">③ 回到这里粘贴导入</div>'+
+        '<textarea id="sharePasteIn" placeholder="把刚才复制的内容粘贴到这里（会很长，正常）" style="width:100%;height:84px;box-sizing:border-box;border:1px solid #e3e6ec;border-radius:10px;padding:9px;font-size:12.5px;line-height:1.5;resize:none;outline:none"></textarea>'+
+        '<div id="sharePasteCnt" style="font-size:11px;color:#999;margin-top:5px;text-align:center;min-height:14px"></div>'+
+        '<div style="display:flex;gap:8px;margin-top:8px">'+
+          '<button id="shareFromClip" style="flex:1;padding:11px;border:0;border-radius:11px;background:#f1f3f6;color:#444;font-size:13.5px">从剪贴板读取</button>'+
+          '<button id="sharePasteGo" style="flex:1;padding:11px;border:0;border-radius:11px;background:#4d6bfe;color:#fff;font-size:13.5px;font-weight:600">解析导入</button>'+
+        '</div>'+
         '<div style="height:8px"></div>'+
-        '<button id="sharePasteBtn" style="width:100%;padding:11px;border:0;border-radius:11px;background:#f1f3f6;color:#444;font-size:14px">粘贴内容导入</button>'+
-        '<textarea id="sharePasteIn" placeholder="把复制到的内容粘贴到这里" style="display:none;width:100%;height:90px;box-sizing:border-box;border:1px solid #e3e6ec;border-radius:10px;padding:9px;font-size:12.5px;line-height:1.5;resize:none;outline:none;margin-top:8px"></textarea>'+
-        '<button id="sharePasteGo" style="display:none;width:100%;padding:11px;border:0;border-radius:11px;background:#4d6bfe;color:#fff;font-size:14px;font-weight:600;margin-top:8px">解析导入</button>'+
+        '<button id="sharePickFile" style="width:100%;padding:11px;border:0;border-radius:11px;background:#eef7ee;color:#1e8e3e;font-size:13.5px;font-weight:600">选择文件导入（.mht / .html / .json）</button>'+
+        '<div style="font-size:11px;color:#999;line-height:1.7;margin-top:6px">保存网页后的 .mht 文件通常在「文件管理 → 下载」里，选它即可。</div>'+
       '</div>'+
 
       // App 内直连（有代理时）
@@ -2826,29 +2834,68 @@ function importFromShareLink(){
     try{ window.open(apiUrlEl.textContent, '_blank'); }catch(e){ location.href = apiUrlEl.textContent; }
   };
 
-  // ③-1 选文件
-  mask.querySelector('#sharePickFile').onclick = function(){
-    var inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = '.json,application/json,text/plain';
-    inp.onchange = function(){
-      var f = inp.files && inp.files[0];
-      if(!f) return;
-      var fr = new FileReader();
-      fr.onload = function(){ doImport(String(fr.result || '')); };
-      fr.onerror = function(){ setMsg('文件读取失败'); };
-      fr.readAsText(f, 'utf-8');
-    };
-    inp.click();
+  // 粘贴框：实时显示字符数，让用户知道有没有粘全
+  var cntEl = mask.querySelector('#sharePasteCnt');
+  if(pasteIn && cntEl){
+    pasteIn.addEventListener('input', function(){
+      var n = (pasteIn.value || '').length;
+      cntEl.textContent = n ? ('已粘贴 ' + n.toLocaleString() + ' 个字符') : '';
+    });
+  }
+  pasteGo.onclick = function(){
+    var v = (pasteIn.value || '').trim();
+    if(!v){ setMsg('请先粘贴内容'); return; }
+    if(v.length < 30){ setMsg('内容太短，可能没复制全'); return; }
+    doImport(v);
   };
 
-  // ③-2 粘贴
-  mask.querySelector('#sharePasteBtn').onclick = function(){
-    pasteIn.style.display = '';
-    pasteGo.style.display = '';
-    pasteIn.focus();
+  // 选文件：支持 html / txt / json，自动提取
+  var pickBtn = mask.querySelector('#sharePickFile');
+  if(pickBtn) pickBtn.onclick = function(){
+    var finp = document.createElement('input');
+    finp.type = 'file';
+    // 不限制类型：部分安卓文件选择器不认识 .mht，会把文件藏起来
+    finp.accept = '*/*';
+    finp.onchange = function(){
+      var f2 = finp.files && finp.files[0];
+      if(!f2) return;
+      var fr = new FileReader();
+      fr.onload = function(){
+        var rawTxt = String(fr.result || '');
+        var jsonTxt = null;
+        var name = String(f2.name || '').toLowerCase();
+        if(/\.mht$|\.mhtml$/.test(name)){
+          jsonTxt = extractJsonFromMht(rawTxt);   // 保存网页得到的 MHT
+        } else {
+          jsonTxt = extractJsonFromAny(rawTxt) || extractJsonFromMht(rawTxt);
+        }
+        if(!jsonTxt){ setMsg('这个文件里没找到对话数据'); return; }
+        if(cntEl) cntEl.textContent = '已从文件提取 ' + jsonTxt.length.toLocaleString() + ' 个字符';
+        doImport(jsonTxt);
+      };
+      fr.onerror = function(){ setMsg('文件读取失败'); };
+      fr.readAsText(f2, 'utf-8');
+    };
+    finp.click();
   };
-  pasteGo.onclick = function(){ doImport(pasteIn.value || ''); };
+
+  // 从剪贴板读取：绕过输入法，长文本不会卡
+  var clipBtn = mask.querySelector('#shareFromClip');
+  if(clipBtn) clipBtn.onclick = async function(){
+    try{
+      if(!(navigator.clipboard && navigator.clipboard.readText)){
+        setMsg('这个浏览器不支持读剪贴板，请手动长按粘贴');
+        return;
+      }
+      var t = await navigator.clipboard.readText();
+      if(!t){ setMsg('剪贴板是空的'); return; }
+      pasteIn.value = t;
+      if(cntEl) cntEl.textContent = '已读取 ' + t.length.toLocaleString() + ' 个字符';
+      setMsg('已读取，点「解析导入」继续', true);
+    }catch(e){
+      setMsg('读取剪贴板失败（可能没给权限），请长按输入框手动粘贴');
+    }
+  };
 
   // App 内直连
   var sd = mask.querySelector('#shareDirect');
@@ -2892,6 +2939,107 @@ function importFromShareLink(){
       setMsg('转换失败：' + (err && err.message || err));
     }
   }
+}
+
+// quoted-printable 解码（MHT 里常用）
+function decodeQPToText(str){
+  var s = String(str || '');
+  // 去掉软换行
+  s = s.replace(/=\r?\n/g, '');
+  var bytes = [];
+  for(var i = 0; i < s.length; i++){
+    var ch = s.charAt(i);
+    if(ch === '=' && /^[0-9A-Fa-f]{2}$/.test(s.substr(i+1, 2))){
+      bytes.push(parseInt(s.substr(i+1, 2), 16));
+      i += 2;
+    } else {
+      var code = s.charCodeAt(i);
+      if(code < 128){
+        bytes.push(code);
+      } else {
+        // 非 ASCII 先转 UTF-8 字节
+        try{
+          var enc = new TextEncoder().encode(ch);
+          for(var k = 0; k < enc.length; k++) bytes.push(enc[k]);
+        }catch(e){ bytes.push(63); }
+      }
+    }
+  }
+  try{
+    return new TextDecoder('utf-8', {fatal:false}).decode(new Uint8Array(bytes));
+  }catch(e){ return ''; }
+}
+
+// 从 MHT（保存网页）里提取 JSON
+function extractJsonFromMht(rawText){
+  var t = String(rawText || '');
+  // 先按边界切分
+  var bm = t.match(/boundary="?([^"\r\n;]+)"?/i);
+  if(bm){
+    var boundary = bm[1];
+    var parts = t.split('--' + boundary);
+    for(var i = 0; i < parts.length; i++){
+      var part = parts[i];
+      if(!/content-type:\s*text\/html/i.test(part)) continue;
+      var sep = part.indexOf('\r\n\r\n');
+      var skip = 4;
+      if(sep < 0){ sep = part.indexOf('\n\n'); skip = 2; }
+      if(sep < 0) continue;
+      var head = part.slice(0, sep).toLowerCase();
+      var body = part.slice(sep + skip);
+      var decoded = body;
+      if(head.indexOf('quoted-printable') >= 0){
+        decoded = decodeQPToText(body);
+      } else if(head.indexOf('base64') >= 0){
+        try{ decoded = atob(body.replace(/\s/g, '')); }catch(e){ decoded = body; }
+      }
+      var got = extractJsonFromAny(decoded);
+      if(got) return got;
+    }
+  }
+  // 兜底：整个文件先 QP 解码再找
+  var all = decodeQPToText(t);
+  return extractJsonFromAny(all) || extractJsonFromAny(t);
+}
+
+// 从任意文本（JSON / HTML / 纯文本）里提取出那段对话 JSON
+function extractJsonFromAny(text){
+  var t = String(text || '');
+  // 已经是 JSON
+  var trimmed = t.trim();
+  if(trimmed.charAt(0) === '{'){
+    try{ JSON.parse(trimmed); return trimmed; }catch(e){}
+  }
+  // HTML 先反转义常见实体
+  var un = t
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+
+  // 找 {"code": 开头的 JSON 块，按括号配对截取
+  var start = un.indexOf('{"code"');
+  if(start < 0) start = un.indexOf('{ "code"');
+  if(start < 0) return null;
+
+  var depth = 0, i = start, inStr = false, esc = false;
+  for(; i < un.length; i++){
+    var ch = un.charAt(i);
+    if(esc){ esc = false; continue; }
+    if(ch === '\\'){ esc = true; continue; }
+    if(ch === '"'){ inStr = !inStr; continue; }
+    if(inStr) continue;
+    if(ch === '{') depth++;
+    else if(ch === '}'){
+      depth--;
+      if(depth === 0){ i++; break; }
+    }
+  }
+  var json = un.slice(start, i);
+  try{ JSON.parse(json); return json; }catch(e){ return null; }
 }
 
 // 从分享返回的 biz_data 构建对话（不发请求，纯解析）
