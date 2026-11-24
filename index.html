@@ -447,6 +447,7 @@ body[data-theme="light"] .dialog{background:#fff}
 .legal p{margin:0 0 10px}
 .legal strong{color:var(--fg)}
 
+.disclaim{margin:8px 4px 0;font-size:11.5px;line-height:1.8;color:var(--fg3)}
 .regNotice{margin:16px 0 0;padding:16px 14px;border-radius:14px;text-align:center;
   background:rgba(255,159,64,.10);border:1px solid rgba(255,159,64,.28);
   font-size:18px;font-weight:800;color:#d97706;line-height:1.5;letter-spacing:.3px}
@@ -980,13 +981,13 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:29';
+var APP_VERSION='2026-11-23 16:31';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
   fastModel:'deepseek-flash', expertModel:'deepseek-v4-pro', temp:'1.0',
   theme:'light', lang:'zh-CN', fontScale:'1', webSearch:false, think:false,
-  chatStyle:'command', showAvatar:false, wideBubble:false, glass:false, waifu:false, autoTitle:true,
+  chatStyle:'command', showAvatar:false, wideBubble:false, glass:false, waifu:false, autoTitle:true, unlockOn:false,
   userColor:'', aiColor:'', chatBg:'', bgImage:'', fontFamily:'system', sysPrompt:'', userAvatar:'', aiAvatar:'', model:'deepseek-flash', provider:'deepseek', userName:'我', aiName:'',
   tts:{ prov:'openai', base:'https://api.openai.com/v1', key:'', group:'', model:'tts-1', voice:'alloy' },
   voiceStyle:0, autoplay:false, welcomed:false
@@ -1010,7 +1011,9 @@ var curId=null, busy=false, ac=null, pending=[], recentImgs=[];
 if(!S.avatarMigrated){ S.showAvatar=false; S.avatarMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
 if(!S.themeMigrated){ S.theme='light'; S.themeMigrated=true; try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){} }
 if(!S.unlockMigrated){
-  S.sysPrompt=''; S.unlockOn=true; S.unlockMigrated=true;
+  S.sysPrompt='';
+  // 不再强制开启：老用户保持原状态，新用户沿用默认（关闭）
+  S.unlockMigrated=true;
   try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){}
 }
 if(!S.envInjectOff){
@@ -1766,7 +1769,11 @@ function usageLine(u, model){
     : '¥' + cost.toFixed(5);
   // 有未命中时把数字也写出来，方便和官方后台核对
   var missTxt = (miss > 0) ? '，未命中 ' + fmtNum(miss) : '';
-  return '输入 ' + fmtNum(pin) + cacheTxt + missTxt + ' · 输出 ' + fmtNum(out) + ' · 约 ' + money;
+  var anchorTxt = '';
+  if(window.__ctxTrimmed > 0){
+    anchorTxt = '（从第 ' + (window.__ctxTrimmed + 1) + ' 条起）';
+  }
+  return '输入 ' + fmtNum(pin) + cacheTxt + missTxt + ' · 输出 ' + fmtNum(out) + ' · 约 ' + money + anchorTxt;
 }
 
 var ICON_CONV = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5a2.5 2.5 0 01-2.5 2.5H8l-3.5 3V6.5A2.5 2.5 0 017 4h10.5A2.5 2.5 0 0120 6.5z"/><path d="M9 9.5h7M9 12.5h4"/></svg>';
@@ -3788,9 +3795,12 @@ function looksLikeRoleplay(c){
 function buildMessagesCore(c, startAt){
   var arr=[];
   // 系统提示词：用户自定义优先，否则默认带「沉浸叙事」预设（可关）
-  var _sys = (S.sysPrompt && String(S.sysPrompt).trim())
-    ? String(S.sysPrompt).trim()
-    : ((S.unlockOn!==false) ? UNLOCK_PROMPT : '');
+  var _sys = '';
+  if(S.sysPrompt && String(S.sysPrompt).trim()){
+    _sys = String(S.sysPrompt).trim();
+  } else if(S.unlockOn === true){
+    _sys = UNLOCK_PROMPT;
+  }
   if(_sys) arr.push({role:'system',content:_sys});
   var hint=langHint();
   if(hint) arr.push({role:'system',content:hint});
@@ -4632,6 +4642,11 @@ document.addEventListener('click',async function(e){
   if(sw){
     var k=sw.dataset.toggle;
     if(k==='injectTime'){ S.injectTime = (S.injectTime===false) ? true : false; }
+    else if(k==='unlockOn'){
+      S.unlockOn = !S.unlockOn;
+      // 关闭时必须清掉残留的预设，否则已经聊起来的对话仍然生效
+      if(S.unlockOn !== true) S.sysPrompt = '';
+    }
     else { S[k]=!S[k]; }
     if(k==='waifu' && S.waifu && S.chatStyle!=='bubble'){
       toast('当前是命令框，Waifu 只在「对话框」风格生效');
@@ -5249,17 +5264,15 @@ function subMore(){
   '<div class="hint">默认 deepseek-flash。想换模型直接改这里（换服务商请同时改 Base URL）。「深度思考」开关只决定是否展示思考链，模型本身支持时才会出现。</div>'+
   '<div class="hint" style="padding-top:4px">联网搜索由输入框上方的「智能搜索」开关控制，无需在此设置。</div>'+
   '<div class="sec">'+t('waifu')+'</div>'+
-  '<div class="sec">系统提示词（人设 / 角色设定）</div>'+
-  '<div class="group"><div class="row"><span class="k">默认启用「沉浸叙事」<div style="font-size:12px;color:var(--fg3);margin-top:2px">开启后所有新对话自动带上，不用每次手动开</div></span><div class="sw '+(S.unlockOn!==false?'on':'')+'" data-toggle="unlockOn"><i></i></div></div></div>'+
-  '<div class="group" style="padding:10px 14px">'+
-    '<textarea id="sysPromptBox" placeholder="在这里写 AI 的人设、语气、说话规则。会作为最高优先级的系统提示发送，每次对话都生效。" '+
-      'style="width:100%;min-height:110px;background:var(--card2);border:0;border-radius:12px;padding:12px;'+
-      'font-size:14px;line-height:1.65;color:var(--fg);resize:vertical;outline:none">'+esc(S.sysPrompt||'')+'</textarea>'+
-    '<button class="btn" id="sysPromptUnlock" style="margin:0 0 8px;padding:11px;font-size:14px;background:var(--blue-soft);color:var(--blue-txt);border:0">一键填入「沉浸叙事」预设</button>'+
-    '<div style="display:flex;gap:8px;margin-top:10px">'+
-      '<button class="btn" id="sysPromptClear" style="margin:0;flex:0 0 auto;padding:10px 14px;font-size:14px">清空</button>'+
-      '<button class="btn primary" id="sysPromptSave" style="margin:0;flex:1;padding:10px;font-size:14px">保存设定</button>'+
-    '</div>'+
+  '<div class="sec">角色扮演模式</div>'+
+  '<div class="group">'+
+    '<div class="row"><span class="k">启用角色扮演模式<div style="font-size:12px;color:var(--fg3);margin-top:2px">开启后 AI 会跟随剧情续写，不再拒绝虚构创作</div></span>'+
+      '<div class="sw '+(S.unlockOn===true?'on':'')+'" data-toggle="unlockOn"><i></i></div></div>'+
+  '</div>'+
+  '<div class="disclaim">'+
+    '本功能仅用于个人创作与角色扮演。请勿用于生成违反法律法规的内容，'+
+    '包括但不限于色情低俗、暴力血腥、危害国家安全、侵犯他人权益等。'+
+    '生成内容由你自行判断并承担全部责任。'+
   '</div>'+
   '<div class="group">'+
     '<div class="row"><span class="k">'+t('waifu')+'（仅对话框风格生效）<div style="font-size:12px;color:var(--fg3);margin-top:2px">'+t('waifuD')+'</div></span><div class="sw '+(S.waifu?'on':'')+'" data-toggle="waifu"><i></i></div></div>'+
@@ -5311,7 +5324,7 @@ function syncInputs(){
 }
 
 /* ---- 补充文案 ---- */
-L.zh.disclaimer='免责声明：本软件为个人自用的界面复刻练习，非 DeepSeek 官方应用，与深度求索公司无任何关联。对话内容由你所接入的模型服务生成，仅供个人参考，请自行核实。';
+L.zh.disclaimer='免责声明：本软件为个人自用的界面复刻练习，非 DeepSeek 官方应用，与深度求索公司无任何关联。对话内容由你所接入的模型服务生成，仅供个人参考，请自行核实并对使用后果负责。严禁用于生成违法违规内容。';
 L.en.disclaimer='Disclaimer: a personal UI recreation, not an official DeepSeek app, unaffiliated with DeepSeek.';
 L.ja.disclaimer='免責事項：個人利用のための UI 再現であり、DeepSeek 公式ではありません。';
 L.zh.helpTxt='这是一个本地运行的软件，所有对话与密钥只保存在本机，不会上传到其他地方。';
@@ -5335,9 +5348,12 @@ function subAgree(){
   '<h3>一、性质与定位</h3><p>本软件为单文件程序，无服务端、无统计埋点、不收集任何数据。它更像一份「自己用的界面」：所有能力由你自行配置的 API Key 向第三方大模型服务发起请求，本软件只负责展示与交互。</p>'+
   '<h3>二、界面与美化说明</h3><p>本软件的排版、配色、图标组织方式参照官方客户端还原，并对若干细节做了个人化美化（气泡样式、主题配色、字号、会话管理、Waifu 逐句发送等）。上述改动均为个人审美取向，不代表官方立场，也不构成对官方产品的替代或竞争。</p>'+
   '<h3>三、使用限制</h3><p>1. 请勿将本软件用于任何违反中华人民共和国法律法规及使用者所在地法律的用途；<br>2. 请勿用于售卖、二次收费、二次修改后发布、去除作者标识后传播等行为；<br>3. 二次修改（二改）需事先取得作者同意，并完整保留本协议与作者标识；<br>4. 由第三方接口产生的一切费用、风险与责任，由使用者本人承担。</p>'+
-  '<h3>四、能力说明</h3><p>作者能力有限，本软件为个人兴趣之作，可能存在界面显示异常、接口不兼容、功能不完整、更新不及时等情况，请勿以商业软件的标准加以要求。遇到问题欢迎反馈，但不承诺响应时效与修复周期。</p>'+
-  '<h3>五、免责声明</h3><p>本软件与 DeepSeek、杭州深度求索人工智能基础技术研究有限公司无任何隶属或合作关系；界面中的名称、图标、文案仅用于本地界面还原，相关权利归原权利人所有。若原权利人认为存在不当之处，联系作者后将第一时间调整或下线。如有雷同，纯属巧合。</p>'+
-  '<h3>六、致谢与关注</h3><p>感谢深度求索团队带来优秀的模型与产品设计，本软件的界面还原灵感来源于此。若你喜欢这个作品，欢迎关注抖音号 <strong>78693933385</strong>，后续更新与说明都会在那里发布。</p></div>';
+  '<h3>四、内容责任</h3><p>本软件仅为交互界面，不参与任何内容的生成、存储或分发。所有对话内容均由你自行配置的 AI 模型服务实时生成，作者无法预知、控制或审核这些内容。<br>你应当自行判断生成内容是否合法、准确、适当，并对使用该内容所产生的一切后果负责。<br>严禁利用本软件生成、传播下列内容：色情低俗、暴力血腥、恐怖主义、危害国家安全、煽动民族仇恨、侵犯他人隐私或名誉、诈骗与虚假信息、以及任何违反法律法规的内容。<br>一经发现，相关责任由使用者自行承担，与作者无关。</p>'+
+  '<h3>五、年龄限制</h3><p>本软件不面向未满 18 周岁的未成年人。未成年人应在监护人知情并同意的情况下使用；因违反本条产生的后果，由使用者及其监护人承担。</p>'+
+  '<h3>六、能力说明</h3><p>作者能力有限，本软件为个人兴趣之作，可能存在界面显示异常、接口不兼容、功能不完整、更新不及时等情况，请勿以商业软件的标准加以要求。遇到问题欢迎反馈，但不承诺响应时效与修复周期。</p>'+
+  '<h3>七、免责声明</h3><p>本软件与 DeepSeek、杭州深度求索人工智能基础技术研究有限公司无任何隶属或合作关系；界面中的名称、图标、文案仅用于本地界面还原，相关权利归原权利人所有。若原权利人认为存在不当之处，联系作者后将第一时间调整或下线。如有雷同，纯属巧合。<br>本软件按「现状」提供，不对可用性、准确性、适用性作任何明示或默示担保。因使用或无法使用本软件造成的任何直接或间接损失，作者不承担责任。</p>'+
+  '<h3>八、举报与联系</h3><p>如你认为本软件存在侵权、违规或其他不当之处，请通过抖音号 <strong>78693933385</strong> 联系作者。作者将在核实后的合理时间内作出调整或下线处理。</p>'+
+  '<h3>九、致谢与关注</h3><p>感谢深度求索团队带来优秀的模型与产品设计，本软件的界面还原灵感来源于此。若你喜欢这个作品，欢迎关注抖音号 <strong>78693933385</strong>，后续更新与说明都会在那里发布。</p></div>';
 }
 function subHelp(){
   if(uiLang()!=='zh'){
@@ -5365,26 +5381,6 @@ function subHelp(){
   '<h3>反馈</h3><p>用不明白、发现 bug、想要新功能，都可以到抖音找作者：<strong>抖音号 78693933385</strong>。反馈时说明手机型号、浏览器和出问题的步骤，处理会更快。</p></div>';
 }
 document.addEventListener('click',async function(e){
-  if(e.target.id==='sysPromptSave'){
-    var sp=document.getElementById('sysPromptBox');
-    S.sysPrompt = sp ? sp.value : '';
-    saveS(); toast('系统提示词已保存，下一条消息生效');
-    return;
-  }
-  if(e.target.id==='sysPromptUnlock'){
-    var ub=document.getElementById('sysPromptBox');
-    if(ub){ ub.value = UNLOCK_PROMPT; }
-    S.sysPrompt = UNLOCK_PROMPT; saveS();
-    toast('预设已填入并保存');
-    return;
-  }
-  if(e.target.id==='sysPromptClear'){
-    S.sysPrompt=''; saveS();
-    var spb=document.getElementById('sysPromptBox');
-    if(spb) spb.value='';
-    toast('已清空');
-    return;
-  }
   if(e.target.id==='mTestKey'){ testApiKey(); return; }
   if(e.target.id==='mSave'||e.target.id==='ttsSave'){ syncInputs(); toast(t('save')); }
   if(e.target.id==='ttsTest'){ syncInputs(); speak('你好，这是一段语音试听。'); }
