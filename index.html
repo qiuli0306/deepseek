@@ -1033,7 +1033,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:34';
+var APP_VERSION='2026-11-23 16:37';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2744,97 +2744,251 @@ async function zipReadFromFile(file, entry){
 }
 
 // ===== 从 DeepSeek 分享链接导入单个对话 =====
-function canUseLinkImport(){
-  // 只有 APK（有本地代理）能绕过 CORS
-  return !!window.__proxyPort;
-}
-
 function importFromShareLink(){
-  if(!canUseLinkImport()){
-    alert('这个功能只在安卓 App 里可用。\n\n因为浏览器有跨域限制，读不到官方的分享内容。\n\n苹果用户请用下面的「导入 DeepSeek 备份（zip）」整体导入。');
-    return;
-  }
+  var isApp = !!window.__proxyPort;
 
   var mask = document.createElement('div');
-  mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;padding:20px';
-  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:22px 20px;max-width:340px;width:100%">'+
-    '<div style="font-size:16.5px;font-weight:700;margin-bottom:6px">导入单个对话</div>'+
-    '<div style="font-size:12.5px;color:#888;line-height:1.6;margin-bottom:14px">粘贴 DeepSeek 官方的分享链接，只会导入这一个对话</div>'+
-    '<textarea id="shareUrlIn" placeholder="https://chat.deepseek.com/share/xxxxx" style="width:100%;height:76px;box-sizing:border-box;border:1px solid #e3e6ec;border-radius:10px;padding:10px;font-size:13px;line-height:1.5;resize:none;outline:none"></textarea>'+
-    '<div id="shareMsg" style="font-size:12px;color:#d93025;margin-top:8px;min-height:16px"></div>'+
-    '<button id="shareGo" style="width:100%;padding:12px;border:0;border-radius:12px;background:#4d6bfe;color:#fff;font-size:15px;font-weight:600;margin-top:6px">导入</button>'+
-    '<button id="shareCancel" style="width:100%;padding:11px;border:0;border-radius:12px;background:#f1f3f6;color:#666;font-size:14px;margin-top:8px">取消</button>'+
+  mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;padding:18px';
+  mask.innerHTML =
+    '<div style="background:#fff;border-radius:18px;padding:20px 18px;max-width:352px;width:100%;max-height:88vh;overflow-y:auto">'+
+      '<div style="font-size:16.5px;font-weight:700;margin-bottom:4px">导入单个对话</div>'+
+      '<div style="font-size:12.5px;color:#888;line-height:1.6;margin-bottom:14px">从 DeepSeek 官方分享链接导入，只导入这一个对话</div>'+
+
+      // 第一步：粘贴链接
+      '<div style="font-size:13px;font-weight:600;color:#333;margin-bottom:6px">① 粘贴分享链接</div>'+
+      '<textarea id="shareUrlIn" placeholder="https://chat.deepseek.com/share/xxxxx" style="width:100%;height:64px;box-sizing:border-box;border:1px solid #e3e6ec;border-radius:10px;padding:9px;font-size:13px;line-height:1.5;resize:none;outline:none"></textarea>'+
+      '<button id="shareMake" style="width:100%;padding:11px;border:0;border-radius:11px;background:#eef1fb;color:#4d6bfe;font-size:14px;font-weight:600;margin-top:8px">生成数据地址</button>'+
+
+      // 第二步：打开地址
+      '<div id="shareStep2" style="display:none;margin-top:14px">'+
+        '<div style="font-size:13px;font-weight:600;color:#333;margin-bottom:6px">② 在浏览器打开下面地址</div>'+
+        '<div id="shareApiUrl" style="font-size:11.5px;line-height:1.6;color:#666;background:#f6f7fb;border-radius:9px;padding:9px;word-break:break-all;user-select:text"></div>'+
+        '<div style="display:flex;gap:8px;margin-top:8px">'+
+          '<button id="shareCopyUrl" style="flex:1;padding:10px;border:0;border-radius:10px;background:#f1f3f6;color:#444;font-size:13px">复制地址</button>'+
+          '<button id="shareOpenUrl" style="flex:1;padding:10px;border:0;border-radius:10px;background:#4d6bfe;color:#fff;font-size:13px;font-weight:600">打开</button>'+
+        '</div>'+
+        '<div style="font-size:11.5px;color:#999;line-height:1.65;margin-top:8px">打开后是一段文字，全选复制；内容多的话用浏览器「下载」存成文件。</div>'+
+      '</div>'+
+
+      // 第三步：导入
+      '<div id="shareStep3" style="display:none;margin-top:14px">'+
+        '<div style="font-size:13px;font-weight:600;color:#333;margin-bottom:6px">③ 回到这里导入</div>'+
+        '<button id="sharePickFile" style="width:100%;padding:11px;border:0;border-radius:11px;background:#eef1fb;color:#4d6bfe;font-size:14px;font-weight:600">选择 JSON 文件导入（推荐）</button>'+
+        '<div style="height:8px"></div>'+
+        '<button id="sharePasteBtn" style="width:100%;padding:11px;border:0;border-radius:11px;background:#f1f3f6;color:#444;font-size:14px">粘贴内容导入</button>'+
+        '<textarea id="sharePasteIn" placeholder="把复制到的内容粘贴到这里" style="display:none;width:100%;height:90px;box-sizing:border-box;border:1px solid #e3e6ec;border-radius:10px;padding:9px;font-size:12.5px;line-height:1.5;resize:none;outline:none;margin-top:8px"></textarea>'+
+        '<button id="sharePasteGo" style="display:none;width:100%;padding:11px;border:0;border-radius:11px;background:#4d6bfe;color:#fff;font-size:14px;font-weight:600;margin-top:8px">解析导入</button>'+
+      '</div>'+
+
+      // App 内直连（有代理时）
+      (isApp ? '<div style="height:12px"></div><button id="shareDirect" style="width:100%;padding:11px;border:0;border-radius:11px;background:#eef7ee;color:#1e8e3e;font-size:13.5px;font-weight:600">直接用链接导入（App 内）</button>' : '')+
+
+      '<div id="shareMsg" style="font-size:12px;color:#d93025;margin-top:10px;min-height:16px;line-height:1.6;white-space:pre-line"></div>'+
+      '<button id="shareCancel" style="width:100%;padding:11px;border:0;border-radius:12px;background:#f1f3f6;color:#666;font-size:14px;margin-top:6px">取消</button>'+
     '</div>';
   document.body.appendChild(mask);
 
-  var inp = mask.querySelector('#shareUrlIn');
   var msg = mask.querySelector('#shareMsg');
-  var go = mask.querySelector('#shareGo');
+  var apiBox = mask.querySelector('#shareStep2');
+  var step3 = mask.querySelector('#shareStep3');
+  var apiUrlEl = mask.querySelector('#shareApiUrl');
+  var pasteIn = mask.querySelector('#sharePasteIn');
+  var pasteGo = mask.querySelector('#sharePasteGo');
+  var curShareId = '';
 
   var close = function(){ try{ document.body.removeChild(mask); }catch(e){} };
   mask.querySelector('#shareCancel').onclick = close;
 
-  go.onclick = async function(){
-    var raw = (inp.value || '').trim();
-    if(!raw){ msg.textContent = '请先粘贴链接'; return; }
+  function setMsg(t, ok){
+    msg.style.color = ok ? '#1e8e3e' : '#d93025';
+    msg.textContent = t || '';
+  }
 
-    var m = raw.match(/share\/([A-Za-z0-9_-]+)/);
-    if(!m){ msg.textContent = '链接格式不对，应该长这样：https://chat.deepseek.com/share/xxxxx'; return; }
-    var shareId = m[1];
+  // ① 生成数据地址
+  mask.querySelector('#shareMake').onclick = function(){
+    var raw = (mask.querySelector('#shareUrlIn').value || '').trim();
+    if(!raw){ setMsg('请先粘贴分享链接'); return; }
+    var m2 = raw.match(/share\/([A-Za-z0-9_-]+)/);
+    if(!m2){ setMsg('链接格式不对，应该长这样：https://chat.deepseek.com/share/xxxxx'); return; }
+    curShareId = m2[1];
+    var apiUrl = 'https://chat.deepseek.com/api/v0/share/content?share_id=' + curShareId;
+    apiUrlEl.textContent = apiUrl;
+    apiBox.style.display = '';
+    step3.style.display = '';
+    setMsg('', true);
+  };
 
-    // 冷却：官方接口限流很严，避免连续请求被封
-    var _coolKey = 'dsclone_share_cool';
-    var _last = 0;
-    try{ _last = parseInt(localStorage.getItem(_coolKey) || '0', 10) || 0; }catch(e){}
-    var _wait = 20 * 1000 - (Date.now() - _last);
-    if(_wait > 0){
-      msg.style.color = '#d93025';
-      msg.textContent = '请等 ' + Math.ceil(_wait/1000) + ' 秒后再试（官方接口有频率限制）';
-      return;
-    }
-    try{ localStorage.setItem(_coolKey, String(Date.now())); }catch(e){}
+  mask.querySelector('#shareCopyUrl').onclick = function(){
+    copyText(apiUrlEl.textContent || '');
+    setMsg('地址已复制，去浏览器打开吧', true);
+  };
+  mask.querySelector('#shareOpenUrl').onclick = function(){
+    try{ window.open(apiUrlEl.textContent, '_blank'); }catch(e){ location.href = apiUrlEl.textContent; }
+  };
 
-    go.disabled = true;
-    go.textContent = '正在读取…';
-    msg.style.color = '#4d6bfe';
-    msg.textContent = '正在获取对话内容…';
+  // ③-1 选文件
+  mask.querySelector('#sharePickFile').onclick = function(){
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json,text/plain';
+    inp.onchange = function(){
+      var f = inp.files && inp.files[0];
+      if(!f) return;
+      var fr = new FileReader();
+      fr.onload = function(){ doImport(String(fr.result || '')); };
+      fr.onerror = function(){ setMsg('文件读取失败'); };
+      fr.readAsText(f, 'utf-8');
+    };
+    inp.click();
+  };
 
+  // ③-2 粘贴
+  mask.querySelector('#sharePasteBtn').onclick = function(){
+    pasteIn.style.display = '';
+    pasteGo.style.display = '';
+    pasteIn.focus();
+  };
+  pasteGo.onclick = function(){ doImport(pasteIn.value || ''); };
+
+  // App 内直连
+  var sd = mask.querySelector('#shareDirect');
+  if(sd) sd.onclick = async function(){
+    var raw = (mask.querySelector('#shareUrlIn').value || '').trim();
+    var m3 = raw.match(/share\/([A-Za-z0-9_-]+)/);
+    if(!m3){ setMsg('请先粘贴分享链接'); return; }
+    sd.disabled = true; sd.textContent = '正在读取…';
     try{
-      var conv = await fetchShareConversation(shareId, function(txt){
-        msg.textContent = txt;
-      });
-      if(!conv || !conv.msgs.length) throw new Error('这个分享里没有可导入的内容');
-
-      // 合并进列表
-      var exist = false;
-      convs.forEach(function(c){ if(c.id === conv.id) exist = true; });
-      if(!exist){
-        convs.unshift(conv);
-        convs.sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
-      }
-      await idbSet('conv_' + conv.id, conv).catch(function(){});
-      saveListNow();
-      renderConvs(); updateHeadTitle();
-      if(typeof markBackupDone === 'function'){ /* 导入不改备份时间 */ }
-
-      msg.style.color = '#1e8e3e';
-      msg.textContent = '导入成功：' + conv.msgs.length + ' 条消息';
-      go.textContent = '完成';
-      setTimeout(close, 900);
-      toast('已导入「' + (conv.title||'分享的对话') + '」');
+      var conv = await fetchShareConversation(m3[1], function(t){ setMsg(t, true); });
+      finishImport(conv, close, setMsg);
     }catch(err){
-      go.disabled = false;
-      go.textContent = '重试';
-      msg.style.color = '#d93025';
-      var em = String((err && err.message) || err);
-      if(/Failed to fetch|NetworkError|Load failed/i.test(em)){
-        em = '网络请求失败。可能是：\n· 代理没连上（试着关掉 VPN 再试）\n· 网络不稳定\n· App 版本太旧，需要更新到最新版';
-      }
-      msg.style.whiteSpace = 'pre-line';
-      msg.textContent = '导入失败：' + em;
+      sd.disabled = false; sd.textContent = '直接用链接导入（App 内）';
+      setMsg('直连失败，请用上面的浏览器方式：' + (err && err.message || err));
     }
   };
+
+  // 统一导入
+  async function doImport(text){
+    var raw = String(text || '').trim();
+    if(!raw){ setMsg('内容为空'); return; }
+    var obj = null;
+    try{ obj = JSON.parse(raw); }
+    catch(e){
+      setMsg('不是有效的 JSON。请确认复制完整了（要以 { 开头，以 } 结尾）');
+      return;
+    }
+    var bd = obj && obj.data && obj.data.biz_data;
+    if(!bd){
+      var code = obj && obj.data && obj.data.biz_code;
+      var bmsg = obj && obj.data && obj.data.biz_msg;
+      if(bmsg === 'share does not exist'){ setMsg('这个分享不存在或已失效，请重新分享一个'); return; }
+      setMsg('数据里没有对话内容' + (bmsg ? '（' + bmsg + '）' : ''));
+      return;
+    }
+    setMsg('正在转换…', true);
+    try{
+      var conv = await buildConvFromShareData(bd);
+      finishImport(conv, close, setMsg);
+    }catch(err){
+      setMsg('转换失败：' + (err && err.message || err));
+    }
+  }
 }
+
+// 从分享返回的 biz_data 构建对话（不发请求，纯解析）
+async function buildConvFromShareData(bd){
+  if(!bd || !Array.isArray(bd.messages)) throw new Error('数据格式不对');
+  var msgs = [], imgTasks = [];
+
+  bd.messages.forEach(function(m){
+    var role = String(m.role || '').toUpperCase();
+    var text = '', think = '', thinkSec = 0, imgs = [];
+    (m.fragments || []).forEach(function(f){
+      var t = String(f.type || '').toUpperCase();
+      if(t === 'THINK'){
+        think += (f.content || '');
+        if(f.elapsed_secs) thinkSec = Math.round(f.elapsed_secs);
+      } else if(t === 'RESPONSE' || t === 'REQUEST' || t === 'TEXT'){
+        text += (f.content || '');
+      } else if(t === 'FILE'){
+        (f.files || []).forEach(function(fl){
+          if(fl && fl.is_image && fl.signed_path){
+            imgTasks.push({ msgIndex: msgs.length, path: fl.signed_path });
+            imgs.push(null);
+          }
+        });
+      }
+    });
+    if(role === 'USER'){
+      var um = { role:'user', content:text };
+      if(imgs.length) um.images = imgs;
+      msgs.push(um);
+    } else if(role === 'ASSISTANT'){
+      var am = { role:'ai', content:text };
+      if(think){ am.reasoning = think; am.think = true; if(thinkSec) am.thinkSec = thinkSec; }
+      msgs.push(am);
+    }
+  });
+
+  // App 内尝试补图片（网页版会失败，忽略即可）
+  if(imgTasks.length && window.__proxyPort){
+    for(var i = 0; i < imgTasks.length; i++){
+      try{
+        var b64 = await fetchShareImage(imgTasks[i].path);
+        if(b64){
+          var target = msgs[imgTasks[i].msgIndex];
+          if(target && target.images){
+            var slot = target.images.indexOf(null);
+            if(slot >= 0) target.images[slot] = b64;
+            else target.images.push(b64);
+          }
+        }
+      }catch(e){}
+    }
+  }
+
+  msgs.forEach(function(m){
+    if(m.images){
+      m.images = m.images.filter(function(x){ return !!x; });
+      if(!m.images.length) delete m.images;
+    }
+  });
+  msgs = msgs.filter(function(x){ return (x.content && x.content.trim()) || (x.images && x.images.length); });
+  if(!msgs.length) throw new Error('没有可导入的消息');
+
+  var title = '导入的对话';
+  for(var k = 0; k < msgs.length; k++){
+    if(msgs[k].role === 'user' && msgs[k].content){
+      title = msgs[k].content.replace(/\s+/g,' ').trim().slice(0, 20);
+      break;
+    }
+  }
+  return {
+    id: 'sh_' + Date.now().toString(36),
+    title: title || '导入的对话',
+    ts: Date.now(),
+    msgs: msgs,
+    titleGen: 2,
+    titleManual: true
+  };
+}
+
+// 导入完成后统一处理
+async function finishImport(conv, close, setMsg){
+  if(!conv || !conv.msgs.length) throw new Error('没有可导入的内容');
+  var exist = false;
+  convs.forEach(function(c){ if(c.id === conv.id) exist = true; });
+  if(!exist){
+    convs.unshift(conv);
+    convs.sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+  }
+  await idbSet('conv_' + conv.id, conv).catch(function(){});
+  saveListNow();
+  renderConvs(); updateHeadTitle();
+  setMsg('导入成功：' + conv.msgs.length + ' 条消息', true);
+  setTimeout(close, 900);
+  toast('已导入「' + (conv.title||'对话') + '」');
+}
+
 
 // 拉取并转换成我们的对话格式
 async function fetchShareConversation(shareId, onStatus){
@@ -4272,7 +4426,14 @@ async function send(text, retryIndex, skipPush){
     else{
       var m = (err && err._friendly) ? String(err.message) : String((err&&err.message)||'error');
       if(!(err && err._friendly)){
-        if(m.indexOf('Failed to fetch')>=0) m='网络连不上服务器。\n· 检查网络\n· 确认 Base URL 写对了\n· 有些中转站不允许网页直接调用（跨域），可换用支持的服务商';
+        if(/Failed to fetch|NetworkError|Load failed|network error|network is unreachable|ERR_NETWORK|ERR_CONNECTION|timeout|timed out/i.test(m)){
+          m = '网络请求没有发出去。常见原因：\n' +
+              '· 网络断了，或正在切换 WiFi / 流量\n' +
+              '· 开了 VPN 或代理，把请求拦住了（先关掉试试）\n' +
+              '· Base URL 填错（DeepSeek 官方填 https://api.deepseek.com 就行）\n' +
+              '· 这个服务商不允许网页直接调用（跨域），换官方接口或支持 CORS 的中转\n\n' +
+              '点下面的刷新按钮可以重试。';
+        }
         else if(m.indexOf('non ISO-8859-1')>=0) m='Key 或地址里混进了中文/全角字符，请重新粘贴一次';
       }
       ai.content += (ai.content?'\n\n':'')+'请求失败：'+m;
@@ -5493,8 +5654,8 @@ function subData(){
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mExport">'+t('dataExport')+'</button>'+
   '<div style="height:8px"></div>'+
-  '<button class="btn" id="mImportLink">从分享链接导入单个对话（仅安卓）</button>'+
-  '<div class="hint" style="margin:6px 2px 0">粘贴官方分享链接，只导入这一个对话，含图片。苹果用户请用下面那个整体导入。</div>'+
+  '<button class="btn" id="mImportLink">从官方分享链接导入单个对话</button>'+
+  '<div class="hint" style="margin:6px 2px 0">粘贴 DeepSeek 的分享链接，只导入这一个对话。支持浏览器取数据后粘贴或选文件导入，手机电脑都能用。</div>'+
   '<div style="height:8px"></div>'+
   '<button class="btn" id="mImportDS">导入 DeepSeek 备份（zip）</button>'+
   '<div class="hint" style="margin:6px 2px 0">从 DeepSeek 官方 App「设置 → 数据管理 → 导出所有历史对话」下载的 zip，直接选这个文件。对话、思考过程、图片都会导入，多少条都不卡。</div>'+
