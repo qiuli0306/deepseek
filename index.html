@@ -980,7 +980,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:25';
+var APP_VERSION='2026-11-23 16:26';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -2722,6 +2722,18 @@ function importFromShareLink(){
     if(!m){ msg.textContent = '链接格式不对，应该长这样：https://chat.deepseek.com/share/xxxxx'; return; }
     var shareId = m[1];
 
+    // 冷却：官方接口限流很严，避免连续请求被封
+    var _coolKey = 'dsclone_share_cool';
+    var _last = 0;
+    try{ _last = parseInt(localStorage.getItem(_coolKey) || '0', 10) || 0; }catch(e){}
+    var _wait = 20 * 1000 - (Date.now() - _last);
+    if(_wait > 0){
+      msg.style.color = '#d93025';
+      msg.textContent = '请等 ' + Math.ceil(_wait/1000) + ' 秒后再试（官方接口有频率限制）';
+      return;
+    }
+    try{ localStorage.setItem(_coolKey, String(Date.now())); }catch(e){}
+
     go.disabled = true;
     go.textContent = '正在读取…';
     msg.style.color = '#4d6bfe';
@@ -2754,7 +2766,12 @@ function importFromShareLink(){
       go.disabled = false;
       go.textContent = '重试';
       msg.style.color = '#d93025';
-      msg.textContent = '导入失败：' + (err && err.message || err);
+      var em = String((err && err.message) || err);
+      if(/Failed to fetch|NetworkError|Load failed/i.test(em)){
+        em = '网络请求失败。可能是：\n· 代理没连上（试着关掉 VPN 再试）\n· 网络不稳定\n· App 版本太旧，需要更新到最新版';
+      }
+      msg.style.whiteSpace = 'pre-line';
+      msg.textContent = '导入失败：' + em;
     }
   };
 }
@@ -2764,10 +2781,7 @@ async function fetchShareConversation(shareId, onStatus){
   var api = 'https://chat.deepseek.com/api/v0/share/content?share_id=' + encodeURIComponent(shareId);
   var res = await apiFetch(api, {
     method: 'GET',
-    headers: {
-      'Accept': 'application/json',
-      'Referer': 'https://chat.deepseek.com/'
-    }
+    headers: { 'Accept': 'application/json' }
   });
   if(!res.ok){
     if(res.status === 429) throw new Error('请求太频繁，等一分钟再试');
@@ -2872,10 +2886,7 @@ async function fetchShareImage(signedPath){
   var url = 'https://files.deepseeksvc.com/api' + signedPath + '&ty=p&fmt=webp';
   var res = await apiFetch(url, {
     method: 'GET',
-    headers: {
-      'Accept': 'image/webp,image/*,*/*',
-      'Referer': 'https://chat.deepseek.com/'
-    }
+    headers: { 'Accept': 'image/webp,image/*,*/*' }
   });
   if(!res.ok) return null;
   var blob = await res.blob();
