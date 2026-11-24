@@ -1033,7 +1033,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:44';
+var APP_VERSION='2026-11-23 16:45';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3371,16 +3371,42 @@ async function importDeepSeekZip(file, onProgress){
 
   }
 
-  // 合并进现有数据：按 id 去重，已存在的不重复添加
-  var existIds = {};
-  convs.forEach(function(c){ existIds[c.id] = true; });
-  var fresh = created.filter(function(c){ return !existIds[c.id]; });
-  var skippedDup = created.length - fresh.length;
+  // 合并进现有数据：
+  //   id 不存在      → 新增
+  //   id 存在但内容更多 → 更新（继续聊过的新内容才不丢）
+  //   id 存在且一样多  → 跳过
+  var existMap = {};
+  convs.forEach(function(c){ existMap[c.id] = c; });
 
-  // 新导入的放最前面，且不重新排序
-  // 原因：按时间排序会让旧对话沉底，列表分页后就看不到了
-  if(fresh.length){
-    convs = fresh.concat(convs);
+  var fresh = [], updatedIds = {}, skippedDup = 0;
+  created.forEach(function(c){
+    var old = existMap[c.id];
+    if(!old){
+      fresh.push(c);
+      return;
+    }
+    var newLen = (c.msgs || []).length;
+    var oldLen = (old.msgs || []).length;
+    if(newLen > oldLen){
+      // 官方那边又有新内容 → 用新的覆盖，但保留本地的一些设置
+      old.msgs = c.msgs;
+      if(c.title) old.title = c.title;
+      if(c.ts) old.ts = c.ts;
+      updatedIds[c.id] = true;
+    } else {
+      skippedDup++;
+    }
+  });
+
+  var updatedCount = Object.keys(updatedIds).length;
+
+  // 新导入的放最前面；更新过的也提到前面，方便用户看到
+  if(fresh.length || updatedCount){
+    var promoted = fresh.concat(
+      convs.filter(function(c){ return updatedIds[c.id]; })
+    );
+    var rest = convs.filter(function(c){ return !updatedIds[c.id]; });
+    convs = promoted.concat(rest);
   }
 
   for(var w = 0; w < fresh.length; w++){
@@ -3391,7 +3417,7 @@ async function importDeepSeekZip(file, onProgress){
   await idbSet('convs', convs).catch(function(){});
   try{ localStorage.setItem('dsclone_seen_backup_import', String(Date.now())); }catch(e){}
 
-  return { imported: imported, skipped: skipped, total: total, added: fresh.length, dup: skippedDup };
+  return { imported: imported, skipped: skipped, total: total, added: fresh.length, dup: skippedDup, updated: updatedCount };
 }
 
 // ===== 存储诊断：扫描 IndexedDB 里所有残留对话 =====
@@ -3610,13 +3636,17 @@ function pickDeepSeekBackup(){
       window.__convLimit = 60;      // 重置分页，让新导入的能显示
       renderConvs(true); renderChat(); updateHeadTitle();
 
-      var msgTxt = '';
-      if(r.added > 0){
-        msgTxt = '导入完成\n\n新增：' + r.added + ' 个对话（已放在列表最前面）';
-        if(r.dup > 0) msgTxt += '\n已存在跳过：' + r.dup + ' 个（不会重复）';
-        if(r.skipped > 0) msgTxt += '\n格式不支持：' + r.skipped + ' 个';
-      } else if(r.dup > 0 && r.added === 0){
-        msgTxt = '这些对话之前已经导入过了\n\n共 ' + r.dup + ' 个，没有重复添加。\n可以在列表里搜索标题找到它们。';
+      var lines = [];
+      if(r.added > 0) lines.push('新增：' + r.added + ' 个对话');
+      if(r.updated > 0) lines.push('更新：' + r.updated + ' 个（官方那边有新内容）');
+      if(r.dup > 0) lines.push('没有变化：' + r.dup + ' 个');
+      if(r.skipped > 0) lines.push('格式不支持：' + r.skipped + ' 个');
+
+      var msgTxt;
+      if(r.added > 0 || r.updated > 0){
+        msgTxt = '导入完成\n\n' + lines.join('\n') + '\n\n新增和更新的对话已放在列表最前面。';
+      } else if(r.dup > 0){
+        msgTxt = '这个备份和本地完全一样\n\n共 ' + r.dup + ' 个对话，没有新内容需要更新。\n\n如果你刚在官方聊了新的，请确认：\n· 导出的是最新生成的备份文件\n· 官方 App 里确实能看到那些新对话';
       } else {
         msgTxt = '没有导入任何对话\n\n可能是备份里没有可识别的内容。';
       }
