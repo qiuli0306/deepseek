@@ -26,7 +26,9 @@ body[data-theme="light"]{
   --bg:#fbfbfb; --card:#ffffff; --card2:#f1f1f1; --input:#ffffff;
   --fg:#111111; --fg2:#8a8a8a; --fg3:#b0b0b0; --line:#e6e6e6;
   --blue-soft:#e6ecff; --blue-txt:#3f5bf6; --chev:#c4c4c4;
-  --bubble-user:#dfe8ff; --bubble-ai:#ffffff; --chat-bg:#fbfbfb;
+  /* 注意：这里不能定义 --bubble-user / --bubble-ai / --chat-bg
+     否则会覆盖 applyTheme() 写在内联样式里的用户自选颜色 */
+
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden}
@@ -982,7 +984,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-25 11:14';
+var APP_VERSION='2026-11-25 17:30';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
