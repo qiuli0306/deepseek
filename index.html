@@ -984,7 +984,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-25 17:30';
+var APP_VERSION='2026-11-25 20:00';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1022,6 +1022,12 @@ if(!S.unlockMigrated){
 if(!S.unlockForcedOn){
   S.unlockOn = true;
   S.unlockForcedOn = true;
+  try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){}
+}
+// 自动朗读容易误触：强制关闭所有人一次，需要的自己再开
+if(!S.autoplayOffOnce){
+  S.autoplay = false;
+  S.autoplayOffOnce = true;
   try{ localStorage.setItem('dsclone_settings_v4', JSON.stringify(S)); }catch(e){}
 }
 if(!S.envInjectOff){
@@ -6300,7 +6306,11 @@ async function speak(text){
   if(!text) return;
   text=text.slice(0,1200);
   var cfg=S.tts, prov=(cfg.prov||'openai').toLowerCase();
-  if(!cfg.key||!cfg.base){ toast('请先在「朗读音色 → 自定义语音接口」里配置'); openSub('tts'); return; }
+  if(!cfg.key||!cfg.base){
+    toast('还没有配置语音接口，暂时无法朗读（设置 → 朗读音色）');
+    // 不自动跳转，避免打断当前对话
+    return;
+  }
   var base=cfg.base.replace(/\/+$/,'');
   var v=voiceOf();
   try{
@@ -6365,6 +6375,14 @@ function updateMuteIcon(){
   b.classList.toggle('on',!!S.autoplay);
 }
 $('#btnMute').addEventListener('click',function(){
+  // 要开启时先确认配没配语音接口，避免开了没反应还弹提示
+  if(!S.autoplay){
+    var _cfg = S.tts || {};
+    if(!_cfg.key){
+      toast('还没填语音 API Key，开了也不会朗读。先到「设置 → 朗读音色」配置。');
+      return;
+    }
+  }
   S.autoplay=!S.autoplay; saveS(); updateMuteIcon();
   toast(S.autoplay?'自动朗读已开启':'自动朗读已关闭');
 });
