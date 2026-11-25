@@ -982,7 +982,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-25 10:52';
+var APP_VERSION='2026-11-25 11:14';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -5867,6 +5867,25 @@ function subTts(){
       : '<div class="row"><span class="k">'+t('ttsVoice')+'</span><input type="text" id="ttsVoice" value="'+esc(T.voice)+'"></div>'
     )+
   '</div>'+
+  '</div>'+
+  // ===== 朗读时跳过哪些内容（勾选式） =====
+  '<div class="sec" style="padding-top:16px">朗读时跳过 <span style="font-size:11px;color:var(--fg3);font-weight:400">默认全部开启</span></div>'+
+  '<div class="group">'+
+    TTS_FILTERS.map(function(f){
+      var on = ttsFilterOn(f.id);
+      return '<div class="row" data-ttsfilter="'+f.id+'" style="cursor:pointer;align-items:flex-start">'+
+        '<span class="k" style="line-height:1.5">'+
+          '<span style="font-weight:600">'+esc(f.label)+'</span>'+
+          '<div style="font-size:11.5px;color:var(--fg3);margin-top:3px;line-height:1.55">'+esc(f.hint)+'</div>'+
+        '</span>'+
+        '<span style="flex:none;width:22px;height:22px;border-radius:6px;margin-top:2px;display:flex;align-items:center;justify-content:center;'+
+          (on ? 'background:#4d6bfe;color:#fff;' : 'background:transparent;border:1.5px solid #c9cdd6;')+
+        '">'+(on ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>' : '')+'</span>'+
+      '</div>';
+    }).join('')+
+  '</div>'+
+  '<div class="hint">勾上的内容朗读时会自动跳过，不会念出来。五个都关掉就是原文照读。</div>'+
+
   '<div class="hint" style="white-space:pre-line;line-height:1.75">'+({
     deepseek:'DeepSeek 官方语音：填你自己的官方 API Key 即可，费用按 1.5 元 / 万字符从你的账户扣除。\n\nstella（海星，女声）和 tide（暗潮，男声）是官方 API 目前开放的音色。官方 App 里的「贝壳」「白浪」属于 App 内部音色，未对外开放接口，填进去也用不了。\n\n支持普通话、粤语、英语、日语等 11 种语言自动识别。',
     openai:'OpenAI 兼容：地址填到 /v1，模型 tts-1，音色 alloy / nova / onyx。多数兼容服务都支持。',
@@ -6076,6 +6095,17 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='sbSync'){ toast('同步中…'); if(await sbSync()) toast('同步完成'); return; }
   if(e.target.id==='bgPick'){ $('#bgImage').click(); }
   if(e.target.id==='bgReset'){ S.bgImage=''; S.chatBg=''; saveS(); applyTheme(); renderSubTheme(); }
+  // 勾选/取消朗读时跳过的内容
+  var tf = e.target.closest('[data-ttsfilter]');
+  if(tf){
+    var fid = tf.dataset.ttsfilter;
+    if(!S.ttsSkip || typeof S.ttsSkip !== 'object') S.ttsSkip = {};
+    S.ttsSkip[fid] = (S.ttsSkip[fid] === false);   // 取反：false → true，其他 → false
+    saveS();
+    $('#subScroll').innerHTML = subTts();
+    return;
+  }
+
   var tp=e.target.closest('[data-ttsprov]');
   if(tp){
     syncInputs();
@@ -6215,21 +6245,51 @@ function hexToBytes(hex){
   for(var i=0;i<n;i++) out[i]=parseInt(hex.substr(i*2,2),16);
   return out;
 }
+// 朗读时可以跳过哪些内容（勾选式，默认全开）
+var TTS_FILTERS = [
+  { id:'paren',  label:'（动作描写）',  hint:'全角括号里的内容，通常是动作、神态、心理描写', re:'（[^）]*）' },
+  { id:'corner', label:'【旁白提示】',  hint:'方括号里的内容，通常是旁白、系统提示、场景说明', re:'【[^】]*】' },
+  { id:'brack',  label:'[标注文字]',    hint:'半角中括号里的内容', re:'\\[[^\\]]*\\]' },
+  { id:'md',     label:'**强调** 符号', hint:'加粗、斜体、标题等排版符号，本身不发音', re:'[*_~]{1,3}' },
+  { id:'half',   label:'(英文括号)',    hint:'半角小括号里的内容，可能误删正常文字，需要时再开', re:'\\([^)]*\\)' }
+];
+
+// 某一条是否开启（默认全开）
+function ttsFilterOn(id){
+  var m = S.ttsSkip;
+  if(!m || typeof m !== 'object') return true;
+  return m[id] !== false;
+}
+
+// 取出当前生效的正则
+function ttsRules(){
+  var out = [];
+  TTS_FILTERS.forEach(function(f){
+    if(ttsFilterOn(f.id)) out.push(f.re);
+  });
+  return out;
+}
+
 // 朗读前的文本清理：去掉不该读出来的部分
 function cleanTtsText(t){
   var x = String(t || '');
-  x = x.replace(/```[\s\S]*?```/g, '');          // 代码块
-  x = x.replace(/`[^`]*`/g, '');                   // 行内代码
-  x = x.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1'); // 链接只留文字
-  x = x.replace(/（[^）]*）/g, '');                  // 全角括号内容（动作/旁白）
-  x = x.replace(/\([^)]*\)/g, '');                 // 半角括号内容
-  x = x.replace(/【[^】]*】/g, '');                   // 方括号标题
-  x = x.replace(/^#{1,6}\s*/gm, '');                // 标题井号
-  x = x.replace(/^\s*[-*+]\s+/gm, '');              // 列表符号
-  x = x.replace(/^\s*>\s?/gm, '');                  // 引用符号
-  x = x.replace(/[*_~]{1,3}/g, '');                 // 强调符号
-  x = x.replace(/\|/g, ' ');                        // 表格竖线
-  x = x.replace(/\n{2,}/g, '\n');                    // 多余空行
+  // 固定处理：代码、链接、markdown 符号（这些不需要用户管）
+  x = x.replace(/```[\s\S]*?```/g, '');
+  x = x.replace(/`[^`]*`/g, '');
+  x = x.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1');
+  x = x.replace(/^#{1,6}\s*/gm, '');
+  x = x.replace(/^\s*[-*+]\s+/gm, '');
+  x = x.replace(/^\s*>\s?/gm, '');
+  x = x.replace(/\|/g, ' ');
+
+  // 用户勾选要跳过的内容
+  ttsRules().forEach(function(rule){
+    try{
+      x = x.replace(new RegExp(rule, 'g'), '');
+    }catch(e){ /* 单条出错不影响其他 */ }
+  });
+
+  x = x.replace(/\n{2,}/g, '\n');
   return x.trim();
 }
 
