@@ -982,7 +982,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:52';
+var APP_VERSION='2026-11-23 16:53';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -5839,10 +5839,32 @@ function subTts(){
     )+
     (cu==='deepseek'
       ? '<div class="row"><span class="k">音色</span>'+
-          '<select id="ttsVoiceSel" style="flex:1;background:none;border:0;font-size:14px;color:var(--fg);text-align:right;outline:none">'+
-            '<option value="stella"' + ((T.voice||'stella')==='stella'?' selected':'') + '>stella · 海星（女声）</option>'+
-            '<option value="tide"' + (T.voice==='tide'?' selected':'') + '>tide · 暗潮（男声）</option>'+
-          '</select></div>'
+          '<select id="ttsVoiceSel" style="flex:1;background:none;border:0;font-size:14px;color:var(--fg);text-align:right;outline:none;max-width:60%">'+
+            (function(){
+              var cur = T.voice || 'stella';
+              var cached = Array.isArray(S.ttsVoiceList) ? S.ttsVoiceList : null;
+              var opts = '';
+              if(cached && cached.length){
+                var found = false;
+                cached.forEach(function(v){
+                  var on = (v.id === cur);
+                  if(on) found = true;
+                  opts += '<option value="'+esc(v.id)+'"'+(on?' selected':'')+'>'+esc(v.id)+(v.name?(' · '+v.name):'')+'</option>';
+                });
+                if(!found){
+                  opts = '<option value="'+esc(cur)+'" selected>'+esc(cur)+'</option>' + opts;
+                }
+              } else {
+                opts = '<option value="stella"'+((cur==='stella')?' selected':'')+'>stella · 海星（女声）</option>'+
+                       '<option value="tide"'+((cur==='tide')?' selected':'')+'>tide · 暗潮（男声）</option>';
+                if(cur !== 'stella' && cur !== 'tide'){
+                  opts = '<option value="'+esc(cur)+'" selected>'+esc(cur)+'</option>' + opts;
+                }
+              }
+              return opts;
+            })()+
+          '</select></div>'+
+          '<div class="row tap" id="ttsFetchVoice"><span class="k" style="color:var(--blue-txt)">拉取完整音色列表</span><span class="v">含贝壳 / 白浪等</span></div>'
       : '<div class="row"><span class="k">'+t('ttsVoice')+'</span><input type="text" id="ttsVoice" value="'+esc(T.voice)+'"></div>'
     )+
   '</div>'+
@@ -6055,6 +6077,18 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='sbSync'){ toast('同步中…'); if(await sbSync()) toast('同步完成'); return; }
   if(e.target.id==='bgPick'){ $('#bgImage').click(); }
   if(e.target.id==='bgReset'){ S.bgImage=''; S.chatBg=''; saveS(); applyTheme(); renderSubTheme(); }
+  if(e.target.closest('#ttsFetchVoice')){
+    syncInputs();
+    toast('正在获取音色列表…');
+    fetchTtsVoices().then(function(r){
+      if(!r){ return; }
+      if(r.error){ toast('获取失败：' + r.error); return; }
+      if(!r.list || !r.list.length){ toast('没有拿到音色'); return; }
+      showTtsVoicePicker(r.list, r.def);
+    });
+    return;
+  }
+
   var tp=e.target.closest('[data-ttsprov]');
   if(tp){
     syncInputs();
@@ -6194,6 +6228,78 @@ function hexToBytes(hex){
   for(var i=0;i<n;i++) out[i]=parseInt(hex.substr(i*2,2),16);
   return out;
 }
+// 音色选择弹窗：列出官方返回的所有音色
+function showTtsVoicePicker(list, defId){
+  var cur = S.tts.voice || defId || 'stella';
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:18px';
+
+  var rows = list.map(function(v){
+    var on = v.id === cur;
+    return '<button data-pickvoice="' + esc(v.id) + '" style="display:flex;align-items:center;gap:10px;width:100%;padding:13px 14px;border:0;border-radius:12px;background:' + (on ? '#eef1fb' : '#f7f8fa') + ';margin-bottom:8px;text-align:left">' +
+      '<span style="flex:1;min-width:0">' +
+        '<span style="display:block;font-size:14.5px;font-weight:600;color:' + (on ? '#4d6bfe' : '#222') + '">' + esc(v.name || v.id) + '</span>' +
+        (v.desc ? '<span style="display:block;font-size:11.5px;color:#888;margin-top:2px">' + esc(v.desc) + '</span>' : '') +
+      '</span>' +
+      '<span style="flex:none;font-size:11px;color:#aaa">' + esc(v.id) + '</span>' +
+      (on ? '<span style="flex:none;color:#4d6bfe;font-weight:700">✓</span>' : '') +
+    '</button>';
+  }).join('');
+
+  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:18px;max-width:340px;width:100%;max-height:82vh;display:flex;flex-direction:column">' +
+    '<div style="font-size:16px;font-weight:700;margin-bottom:4px">选择音色</div>' +
+    '<div style="font-size:12px;color:#888;margin-bottom:12px">共 ' + list.length + ' 个可用音色</div>' +
+    '<div style="flex:1;overflow-y:auto;margin-bottom:12px">' + rows + '</div>' +
+    '<button id="tvCancel" style="width:100%;padding:11px;border:0;border-radius:12px;background:#f1f3f6;color:#666;font-size:14px">取消</button>' +
+  '</div>';
+  document.body.appendChild(mask);
+
+  mask.querySelector('#tvCancel').onclick = function(){ try{ document.body.removeChild(mask); }catch(e){} };
+  mask.querySelectorAll('[data-pickvoice]').forEach(function(b){
+    b.onclick = function(){
+      var vid = b.dataset.pickvoice;
+      S.tts.voice = vid;
+      S.ttsVoiceList = list;   // 缓存起来，下次不用再拉
+      saveS();
+      try{ document.body.removeChild(mask); }catch(e){}
+      $('#subScroll').innerHTML = subTts();
+      toast('音色已切换为 ' + vid);
+    };
+  });
+}
+
+// 从官方拉取可用音色列表
+async function fetchTtsVoices(){
+  var base = (S.tts.base || 'https://api.deepseek.com').replace(/\/+$/,'');
+  var key = (S.tts.key || S.apiKey || '').trim();
+  if(!key){ toast('请先填 API Key'); return null; }
+  try{
+    var res = await apiFetch(base + '/v1/tools/tts/voices', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + key }
+    });
+    if(!res.ok){
+      var t1=''; try{ t1 = await res.text(); }catch(e){}
+      return { error: humanError(res.status, t1) };
+    }
+    var j = await res.json();
+    var list = j.voices || j.data || j.items || j;
+    if(!Array.isArray(list)) return { error: '返回格式不支持' };
+    var out = list.map(function(v){
+      if(typeof v === 'string') return { id: v, name: v, desc: '' };
+      return {
+        id: v.voice_id || v.id || v.voiceId || '',
+        name: (v.name_i18n && (v.name_i18n.zh || v.name_i18n['zh-CN'])) || v.name || v.voice_id || '',
+        desc: (v.description_i18n && (v.description_i18n.zh || v.description_i18n['zh-CN'])) || v.description || '',
+        gender: v.gender || ''
+      };
+    }).filter(function(x){ return x.id; });
+    return { list: out, def: j.default_voice_id || '' };
+  }catch(e){
+    return { error: String(e && e.message || e) };
+  }
+}
+
 // 朗读前的文本清理：去掉不该读出来的部分
 function cleanTtsText(t){
   var x = String(t || '');
