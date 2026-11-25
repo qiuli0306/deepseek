@@ -982,7 +982,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-23 16:51';
+var APP_VERSION='2026-11-23 16:52';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -5822,7 +5822,7 @@ function refreshSub(){
   if(tt===t('themeSub')) $('#subScroll').innerHTML=subThemeSub();
   else if(tt===t('more')) $('#subScroll').innerHTML=subMore();
 }
-function ttsProvs(){ return [['openai','OpenAI 兼容'],['minimax','MiniMax'],['elevenlabs','ElevenLabs'],['custom','自定义']]; }
+function ttsProvs(){ return [['deepseek','DeepSeek 官方'],['openai','OpenAI 兼容'],['minimax','MiniMax'],['elevenlabs','ElevenLabs'],['custom','自定义']]; }
 function subTts(){
   var T=S.tts, cu=(T.prov||'openai').toLowerCase();
   return '<div class="sec" style="padding-top:14px">'+t('ttsProv')+'</div>'+
@@ -5830,13 +5830,24 @@ function subTts(){
     return '<button data-ttsprov="'+o[0]+'" class="'+(cu===o[0]?'on':'')+'">'+o[1]+'</button>';
   }).join('')+'</div>'+
   '<div class="group" style="margin-top:14px">'+
-    '<div class="row"><span class="k">'+t('ttsApi')+'</span><input type="text" id="ttsBase" value="'+esc(T.base)+'"></div>'+
-    '<div class="row"><span class="k">'+t('ttsKey')+'</span><input type="password" id="ttsKey" value="'+esc(T.key)+'"></div>'+
-    (cu==='minimax'?'<div class="row"><span class="k">'+t('ttsGroup')+'</span><input type="text" id="ttsGroup" value="'+esc(T.group)+'"></div>':'')+
-    '<div class="row"><span class="k">'+t('ttsModel')+'</span><input type="text" id="ttsModel" value="'+esc(T.model)+'"></div>'+
-    '<div class="row"><span class="k">'+t('ttsVoice')+'</span><input type="text" id="ttsVoice" value="'+esc(T.voice)+'"></div>'+
+    (cu==='deepseek'
+      ? '<div class="row"><span class="k">API Key</span><input type="password" id="ttsKey" value="'+esc(T.key)+'" placeholder="sk-...（你的 DeepSeek 官方 Key）"></div>'
+      : '<div class="row"><span class="k">'+t('ttsApi')+'</span><input type="text" id="ttsBase" value="'+esc(T.base)+'"></div>'+
+        '<div class="row"><span class="k">'+t('ttsKey')+'</span><input type="password" id="ttsKey" value="'+esc(T.key)+'"></div>'+
+        (cu==='minimax'?'<div class="row"><span class="k">'+t('ttsGroup')+'</span><input type="text" id="ttsGroup" value="'+esc(T.group)+'"></div>':'')+
+        '<div class="row"><span class="k">'+t('ttsModel')+'</span><input type="text" id="ttsModel" value="'+esc(T.model)+'"></div>'
+    )+
+    (cu==='deepseek'
+      ? '<div class="row"><span class="k">音色</span>'+
+          '<select id="ttsVoiceSel" style="flex:1;background:none;border:0;font-size:14px;color:var(--fg);text-align:right;outline:none">'+
+            '<option value="stella"' + ((T.voice||'stella')==='stella'?' selected':'') + '>stella · 海星（女声）</option>'+
+            '<option value="tide"' + (T.voice==='tide'?' selected':'') + '>tide · 暗潮（男声）</option>'+
+          '</select></div>'
+      : '<div class="row"><span class="k">'+t('ttsVoice')+'</span><input type="text" id="ttsVoice" value="'+esc(T.voice)+'"></div>'
+    )+
   '</div>'+
   '<div class="hint">'+({
+    deepseek:'DeepSeek 官方语音：填你自己的官方 API Key 即可，费用按 1.5 元 / 万字符从你的账户扣除。stella 是女声（海星），tide 是男声（暗潮），支持普通话、粤语、英语、日语等 11 种语言自动识别。',
     openai:'OpenAI 兼容：地址填到 /v1，模型 tts-1，音色 alloy / nova / onyx。多数兼容服务都支持。',
     minimax:'MiniMax：地址 https://api.minimax.chat/v1，需填 GroupId；模型 speech-02-hd，音色如 female-shaonv。',
     elevenlabs:'ElevenLabs：地址 https://api.elevenlabs.io/v1，音色处填 Voice ID，模型 eleven_multilingual_v2。',
@@ -5917,9 +5928,19 @@ function syncInputs(){
     saveS();
   }
   if($('#ttsKey')){
-    S.tts={prov:(S.tts.prov||'openai'),base:($('#ttsBase').value||'').trim(),key:$('#ttsKey').value.trim(),
-      group:($('#ttsGroup')?$('#ttsGroup').value.trim():S.tts.group),
-      model:($('#ttsModel').value||'').trim(),voice:($('#ttsVoice').value||'').trim()};
+    var prov = (S.tts.prov || 'openai');
+    var selVoice = $('#ttsVoiceSel');
+    S.tts = {
+      prov: prov,
+      // DeepSeek 模式没有地址输入框，用固定地址
+      base: $('#ttsBase') ? ($('#ttsBase').value||'').trim()
+                          : (prov === 'deepseek' ? 'https://api.deepseek.com' : S.tts.base),
+      key: $('#ttsKey').value.trim(),
+      group: $('#ttsGroup') ? $('#ttsGroup').value.trim() : S.tts.group,
+      model: $('#ttsModel') ? ($('#ttsModel').value||'').trim() : S.tts.model,
+      voice: selVoice ? selVoice.value
+                      : ($('#ttsVoice') ? ($('#ttsVoice').value||'').trim() : S.tts.voice)
+    };
     saveS();
   }
 }
@@ -6035,7 +6056,18 @@ document.addEventListener('click',async function(e){
   if(e.target.id==='bgPick'){ $('#bgImage').click(); }
   if(e.target.id==='bgReset'){ S.bgImage=''; S.chatBg=''; saveS(); applyTheme(); renderSubTheme(); }
   var tp=e.target.closest('[data-ttsprov]');
-  if(tp){ syncInputs(); S.tts.prov=tp.dataset.ttsprov; saveS(); $('#subScroll').innerHTML=subTts(); return; }
+  if(tp){
+    syncInputs();
+    var np = tp.dataset.ttsprov;
+    S.tts.prov = np;
+    if(np === 'deepseek'){
+      S.tts.base = 'https://api.deepseek.com';
+      if(!S.tts.voice || (S.tts.voice !== 'stella' && S.tts.voice !== 'tide')) S.tts.voice = 'stella';
+    }
+    saveS();
+    $('#subScroll').innerHTML = subTts();
+    return;
+  }
   var ps=e.target.closest('[data-preset]');
   if(ps){
     syncInputs();
@@ -6162,8 +6194,26 @@ function hexToBytes(hex){
   for(var i=0;i<n;i++) out[i]=parseInt(hex.substr(i*2,2),16);
   return out;
 }
+// 朗读前的文本清理：去掉不该读出来的部分
+function cleanTtsText(t){
+  var x = String(t || '');
+  x = x.replace(/```[\s\S]*?```/g, '');          // 代码块
+  x = x.replace(/`[^`]*`/g, '');                   // 行内代码
+  x = x.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1'); // 链接只留文字
+  x = x.replace(/（[^）]*）/g, '');                  // 全角括号内容（动作/旁白）
+  x = x.replace(/\([^)]*\)/g, '');                 // 半角括号内容
+  x = x.replace(/【[^】]*】/g, '');                   // 方括号标题
+  x = x.replace(/^#{1,6}\s*/gm, '');                // 标题井号
+  x = x.replace(/^\s*[-*+]\s+/gm, '');              // 列表符号
+  x = x.replace(/^\s*>\s?/gm, '');                  // 引用符号
+  x = x.replace(/[*_~]{1,3}/g, '');                 // 强调符号
+  x = x.replace(/\|/g, ' ');                        // 表格竖线
+  x = x.replace(/\n{2,}/g, '\n');                    // 多余空行
+  return x.trim();
+}
+
 async function speak(text){
-  text=String(text||'').replace(/```[\s\S]*?```/g,'').replace(/[#*`>]/g,'').trim();
+  text = cleanTtsText(text);
   if(!text) return;
   text=text.slice(0,1200);
   var cfg=S.tts, prov=(cfg.prov||'openai').toLowerCase();
@@ -6172,7 +6222,25 @@ async function speak(text){
   var v=voiceOf();
   try{
     var src;
-    if(prov==='minimax'){
+    if(prov==='deepseek'){
+      // DeepSeek 官方 TTS：POST /v1/tools/tts，流式返回音频
+      var dsBase = (cfg.base || 'https://api.deepseek.com').replace(/\/+$/,'');
+      var r0 = await apiFetch(dsBase + '/v1/tools/tts', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},
+        body: JSON.stringify({
+          text: text,
+          voice_id: cfg.voice || 'stella',
+          format: 'wav',
+          filter_markdown: true
+        })
+      });
+      if(!r0.ok){
+        var e0=''; try{ e0 = await r0.text(); }catch(e){}
+        throw new Error(humanError(r0.status, e0));
+      }
+      src = URL.createObjectURL(new Blob([await r0.arrayBuffer()], {type:'audio/wav'}));
+    } else if(prov==='minimax'){
       var url=base+'/t2a_v2'+(cfg.group?('?GroupId='+encodeURIComponent(cfg.group)):'');
       var r1=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},
         body:JSON.stringify({model:cfg.model||'speech-02-hd',text:text,stream:false,
