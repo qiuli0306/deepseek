@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-26 19:50';
+var APP_VERSION='2026-11-26 23:08';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3983,10 +3983,21 @@ function extractSearchQuery(raw){
 async function webSearch(query){
   var base=cleanAscii(S.baseUrl||'').replace(/\/+$/,'') || 'https://api.deepseek.com';
   var url = /\/v1$/.test(base) ? base+'/tools/search' : base+'/v1/tools/search';
+  // 官方限制：query 1~128 字符，超了会直接 400
+  var q = String(extractSearchQuery(query) || '').trim().slice(0, 120);
+  if(!q){
+    q = String(query || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  }
+  if(!q){ return ''; }                 // 提取不出内容就别发请求了
   var res = await apiFetch(url, {
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
-    body: JSON.stringify({query:extractSearchQuery(query).slice(0,400) || String(query||'').slice(0,400), count:5, need_content:true})
+    body: JSON.stringify({
+      query: q,
+      ori_question: String(query || '').replace(/\s+/g, ' ').trim().slice(0, 120) || q,
+      count: 5,
+      need_content: true
+    })
   });
   if(!res.ok){
     var t=''; try{ t=await res.text(); }catch(e){}
@@ -3998,8 +4009,9 @@ async function webSearch(query){
   return list.slice(0,5).map(function(it,i){
     var title=it.title||it.name||it.headline||'';
     var link=it.url||it.link||it.href||'';
-    var body=it.content||it.snippet||it.text||it.summary||it.description||'';
-    return (i+1)+'. '+title+(link?'\n   '+link:'')+(body?'\n   '+String(body).replace(/\s+/g,' ').slice(0,400):'');
+    // 官方返回：content(正文) / summary(600-800字) / snippet(100-200字)，按信息量从多到少取
+    var body=it.content||it.summary||it.snippet||it.text||it.description||'';
+    return (i+1)+'. '+title+(link?'\n   '+link:'')+(body?'\n   '+String(body).replace(/\s+/g,' ').slice(0,600):'');
   }).join('\n\n');
 }
 
@@ -4672,7 +4684,12 @@ async function send(text, retryIndex, skipPush){
       toast('正在联网搜索…');
       _searchCtx = await webSearch(text || (c.msgs[c.msgs.length-2]&&c.msgs[c.msgs.length-2].content) || '');
     }catch(e){
-      toast('搜索失败：'+(e.message||''));
+      var emsg = (e && e.message) || '';
+      if(/128|query|长度|字符/i.test(emsg)){
+        toast('搜索词太长，已跳过联网');
+      } else {
+        toast('搜索失败：' + emsg);
+      }
       _searchCtx = '';
       window.__searchFailed = true;
     }
@@ -7231,5 +7248,36 @@ try{ initCustomFonts(); }catch(e){}
 
 <script charset="UTF-8" id="LA_COLLECT" src="//sdk.51.la/js-sdk-pro.min.js"></script>
 <script>try{LA.init({id:"3RtvZ3hdbBdH14Cu",ck:"3RtvZ3hdbBdH14Cu",autoTrack:false,hashMode:true})}catch(e){}</script>
+<script>
+/* 停留时长统计：完全静默，不上报任何内容，只按刻度记一次「还在用」 */
+(function(){
+  var t0 = Date.now();                        // 从打开页面就开始计时
+  // 51.la 免费额度每月 1 万条，所以抽样上报：只有 5% 的用户参与统计
+  if(Math.random() >= 0.05) return;
+  var marks = [1, 5, 20, 60];
+  var done = {};
+  function tick(){
+    try{
+      // SDK 没就绪（还没加载完或被拦截）就跳过，下次再看
+      if(!window.LA || typeof window.LA.track !== 'function') return;
+      var min = Math.floor((Date.now() - t0) / 60000);
+      for(var i = 0; i < marks.length; i++){
+        var m = marks[i];
+        if(min >= m && !done[m]){
+          done[m] = 1;
+          window.LA.track('stay_' + m);
+        }
+      }
+    }catch(e){}
+  }
+  setInterval(tick, 30000);
+  // 页面隐藏前补一次，尽量不漏
+  try{
+    document.addEventListener('visibilitychange', function(){
+      if(document.visibilityState === 'hidden') tick();
+    });
+  }catch(e){}
+})();
+</script>
 </body>
 </html>
