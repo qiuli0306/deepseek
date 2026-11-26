@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<!-- 安全策略：只允许本页脚本，阻止外部脚本注入（防轻量劫持） -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; object-src 'none'; base-uri 'self';">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#0d0d0d">
 <meta name="mobile-web-app-capable" content="yes">
@@ -353,6 +355,11 @@ body[data-theme="light"] .chatstyle button{background:#fff}
 .colorwrap{display:flex;align-items:center;gap:10px;padding:6px 16px 10px}
 .colorwrap input[type=color]{width:38px;height:30px;border:1px solid var(--line);border-radius:8px;background:none;padding:0}
 .colorwrap .lbl{font-size:13px;color:var(--fg2)}
+.colorwrap .hexin{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--card2);
+  font-size:13.5px;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--fg);
+  padding:7px 10px;outline:none;letter-spacing:.3px}
+.colorwrap .hexin:focus{border-color:#4d6bfe}
+.colorwrap .hexin.bad{border-color:#e05252;color:#e05252}
 
 /* 朗读音色 */
 .voicepage{position:fixed;top:0;left:0;right:0;bottom:0;z-index:75;background:var(--bg);display:flex;flex-direction:column;
@@ -752,53 +759,6 @@ body[data-theme="dark"] .boot-bar{background:#2a2c31}
     </div>
   </div>
 </div>
-<div class="note-mask" id="noteMask">
-  <div class="note-card">
-    <div class="note-badge">📢 声明</div>
-    <div class="note-title">关于近期问题的说明</div>
-    <div class="note-sub">完整内容已发布在我的抖音号</div>
-    <div class="note-douyin">78693933385</div>
-    <div class="note-list">
-      <div class="note-li">登录卡顿已修复</div>
-      <div class="note-li">开屏弹窗已移除</div>
-      <div class="note-li">已知问题及修复进度</div>
-      <div class="note-li">软件教程与 iOS 解决方法</div>
-    </div>
-    <div class="note-group">
-      <div class="note-group-t">遇到问题可以进群</div>
-      <div class="note-group-n">QQ 群 1126560720</div>
-    </div>
-    <button class="note-btn" id="noteBtn" disabled>请先阅读（8）</button>
-    <div class="note-foot">本软件不收取任何费用<br>调用 API 的费用直接支付给官方</div>
-  </div>
-</div>
-<style>
-.note-mask{position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:rgba(0,0,0,.62);
-  display:none;align-items:center;justify-content:center;padding:22px}
-.note-mask.on{display:flex}
-.note-card{background:#fff;border-radius:22px;width:100%;max-width:330px;padding:24px 22px 18px;
-  box-shadow:0 18px 50px rgba(0,0,0,.35);text-align:center;max-height:88vh;overflow-y:auto}
-body[data-theme="dark"] .note-card{background:#1f2024}
-.note-badge{display:inline-block;font-size:12px;color:#4d6bfe;background:rgba(77,107,254,.1);
-  padding:4px 12px;border-radius:20px;font-weight:700;letter-spacing:.5px}
-.note-title{font-size:18px;font-weight:800;color:#1a1a1a;margin-top:12px;letter-spacing:.3px}
-body[data-theme="dark"] .note-title{color:#f0f0f0}
-.note-sub{font-size:12.5px;color:#999;margin-top:10px}
-.note-douyin{font-size:22px;font-weight:800;color:#4d6bfe;letter-spacing:1px;margin-top:4px}
-.note-list{margin:16px 0 0;text-align:left;background:#f6f7fb;border-radius:14px;padding:12px 14px}
-body[data-theme="dark"] .note-list{background:#2a2c32}
-.note-li{font-size:13px;color:#555;line-height:2;padding-left:16px;position:relative}
-body[data-theme="dark"] .note-li{color:#bbb}
-.note-li:before{content:'';position:absolute;left:4px;top:13px;width:5px;height:5px;
-  border-radius:50%;background:#4d6bfe}
-.note-group{margin-top:14px;padding:10px;border-radius:12px;border:1px dashed rgba(77,107,254,.35)}
-.note-group-t{font-size:12px;color:#999}
-.note-group-n{font-size:16px;font-weight:700;color:#4d6bfe;margin-top:3px;letter-spacing:.5px}
-.note-btn{width:100%;margin-top:18px;padding:13px;border-radius:14px;border:0;
-  background:#4d6bfe;color:#fff;font-size:15px;font-weight:700;letter-spacing:.5px}
-.note-btn:disabled{background:#c8cdd8;color:#fff}
-.note-foot{font-size:11px;color:#aaa;margin-top:12px;line-height:1.7}
-</style>
 <div class="uq-mask" id="uqMask">
   <div class="uq-card">
     <div class="uq-ic">💰</div>
@@ -984,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-25 20:00';
+var APP_VERSION='2026-11-26 13:15';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1183,8 +1143,8 @@ function warnStorageIfTight(){
   checkStorageSpace().then(function(info){
     if(!info) return;
     var mb = Math.round(info.free / 1048576);
-    // 剩余不足 60MB，或使用率超过 85%
-    if(info.free < 60 * 1048576 || info.ratio > 0.85){
+    // 只在剩余空间不足 60MB 时提醒
+    if(info.free < 60 * 1048576){
       if(sessionStorage.getItem('dsclone_storage_warned')) return;
       try{ sessionStorage.setItem('dsclone_storage_warned', '1'); }catch(e){}
       showStorageWarn(mb);
@@ -4864,46 +4824,6 @@ $('#tgSearch').addEventListener('click',function(){
   toast(S.webSearch?'智能搜索已开启':'智能搜索已关闭');
 });
 
-/* ================= 开屏声明（只弹一次） ================= */
-var NOTE_SEEN_KEY = 'dsclone_note_v5_seen';
-
-function showNote(){
-  var m = $('#noteMask');
-  if(!m) return;
-  if(localStorage.getItem(NOTE_SEEN_KEY)) return;   // 已经看过，直接跳过
-  m.classList.add('on');
-
-  var btn = $('#noteBtn');
-  if(!btn) return;
-  var left = 8;
-  btn.disabled = true;
-  btn.textContent = '请先阅读（' + left + '）';
-  var timer = setInterval(function(){
-    left--;
-    if(left <= 0){
-      clearInterval(timer);
-      btn.disabled = false;
-      btn.textContent = '我已知晓，进入';
-    } else {
-      btn.textContent = '请先阅读（' + left + '）';
-    }
-  }, 1000);
-}
-
-function closeNote(){
-  var m = $('#noteMask');
-  if(!m) return;
-  var btn = $('#noteBtn');
-  if(btn && btn.disabled) return;    // 倒计时没完不响应
-  m.classList.remove('on');
-  try{ localStorage.setItem(NOTE_SEEN_KEY, '1'); }catch(e){}
-}
-
-(function(){
-  var b = $('#noteBtn');
-  if(b) b.addEventListener('click', closeNote);
-})();
-
 /* ================= 用量功能上线提示（只弹一次） ================= */
 var UQ_SEEN = 'dsclone_note_usage_v1';
 
@@ -4923,13 +4843,8 @@ function closeUsageNote(){
   var b = $('#uqOk');
   if(b) b.addEventListener('click', closeUsageNote);
 
-  // 若声明弹窗正在显示，等它关掉再弹，避免两个窗叠在一起
-  function waitNote(){
-    var nm = $('#noteMask');
-    if(nm && nm.classList.contains('on')){ setTimeout(waitNote, 800); return; }
-    try{ showUsageNote(); }catch(e){}
-  }
-  setTimeout(waitNote, 900);
+  // 声明弹窗已移除，直接弹
+  setTimeout(function(){ try{ showUsageNote(); }catch(e){} }, 900);
 })();
 
 /* ================= 支持作者 ================= */
@@ -5815,15 +5730,55 @@ function subThemeSub(){
   '</div>'+
   '<div class="sec">'+t('userColor')+'</div>'+
   '<div class="swatches">'+userSw.map(function(c){ return '<button class="sw-dot '+(uc.toLowerCase()===c?'on':'')+'" data-usercolor="'+c+'" style="background:'+c+'"></button>'; }).join('')+'</div>'+
-  '<div class="colorwrap"><input type="color" id="userColorPick" value="'+uc+'"><span class="lbl">'+uc+'</span></div>'+
+  '<div class="colorwrap"><input type="color" id="userColorPick" value="'+uc+'"><input type="text" class="hexin" id="userColorHex" value="'+esc(uc)+'" maxlength="20" spellcheck="false" autocomplete="off"></div>'+
   '<div class="sec">'+t('aiColor')+'</div>'+
   '<div class="swatches">'+aiSw.map(function(c){ return '<button class="sw-dot '+(ac2.toLowerCase()===c?'on':'')+'" data-aicolor="'+c+'" style="background:'+c+'"></button>'; }).join('')+'</div>'+
-  '<div class="colorwrap"><input type="color" id="aiColorPick" value="'+ac2+'"><span class="lbl">'+ac2+'</span></div>'+
+  '<div class="colorwrap"><input type="color" id="aiColorPick" value="'+ac2+'"><input type="text" class="hexin" id="aiColorHex" value="'+esc(ac2)+'" maxlength="20" spellcheck="false" autocomplete="off"></div>'+
   '<div class="sec">'+t('chatBg')+'</div>'+
   '<div class="swatches">'+bgSw.map(function(c){ return '<button class="sw-dot '+(String(S.chatBg)===c&&!S.bgImage?'on':'')+'" data-bg="'+c+'" style="background:'+(c||'transparent')+';border:1px solid var(--line)"></button>'; }).join('')+'</div>'+
   '<div style="height:8px"></div><button class="btn" id="bgPick">'+t('bgPick')+'</button>'+
   '<div style="height:8px"></div><button class="btn" id="bgReset">'+t('bgReset')+'</button><div style="height:30px"></div>';
 }
+// 把用户输入的颜色转成标准 #rrggbb；认不出就返回空
+function normHexColor(v){
+  var t = String(v || '').trim().toLowerCase();
+  if(!t) return '';
+  // rgb(255,0,0) 或 rgba(...)
+  var m = t.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/);
+  if(m){
+    var r = Math.min(255, +m[1]), g = Math.min(255, +m[2]), b = Math.min(255, +m[3]);
+    return '#' + [r,g,b].map(function(x){ return ('0'+x.toString(16)).slice(-2); }).join('');
+  }
+  t = t.replace(/^#/, '');
+  if(/^[0-9a-f]{3}$/.test(t)) t = t.split('').map(function(c){ return c + c; }).join('');
+  if(/^[0-9a-f]{6}$/.test(t)) return '#' + t;
+  return '';
+}
+
+// 手动输入色号后应用
+function applyHexInput(which){
+  var inp = $('#' + which + 'ColorHex');
+  if(!inp) return;
+  var norm = normHexColor(inp.value);
+  if(!norm){
+    inp.classList.add('bad');
+    toast('颜色格式不对，请输入如 #dfe8ff');
+    setTimeout(function(){ inp.classList.remove('bad'); }, 1500);
+    // 恢复成当前值
+    inp.value = (which === 'user') ? (S.userColor || '#dfe8ff') : (S.aiColor || '#ffffff');
+    return;
+  }
+  inp.classList.remove('bad');
+  if(which === 'user') S.userColor = norm;
+  else S.aiColor = norm;
+  saveS();
+  applyTheme();
+  inp.value = norm;
+  // 同步色块
+  var pick = $('#' + which + 'ColorPick');
+  if(pick) pick.value = norm;
+}
+
 function renderSubTheme(){ if($('#subTitle').textContent===t('themeSub')){ $('#subScroll').innerHTML=subThemeSub(); renderCustomFonts(); } }
 function refreshSub(){
   var tt=$('#subTitle').textContent;
@@ -6142,6 +6097,17 @@ document.addEventListener('click',async function(e){
     saveS(); $('#subScroll').innerHTML=subMore(); return;
   }
 });
+$('#subScroll').addEventListener('change', function(e){
+  if(e.target.id === 'userColorHex'){ applyHexInput('user'); return; }
+  if(e.target.id === 'aiColorHex'){ applyHexInput('ai'); return; }
+});
+$('#subScroll').addEventListener('keydown', function(e){
+  if(e.key === 'Enter' && (e.target.id === 'userColorHex' || e.target.id === 'aiColorHex')){
+    e.preventDefault();
+    e.target.blur();
+    return;
+  }
+});
 $('#subScroll').addEventListener('input',function(e){
   if(e.target.id==='bgAlpha'){
     S.bgAlpha=+e.target.value; saveS();
@@ -6159,8 +6125,8 @@ $('#subScroll').addEventListener('input',function(e){
     applyTheme(); return;
   }
   // 颜色选择器：拖动时实时预览，不重建页面
-  if(e.target.id==='userColorPick'){ S.userColor=e.target.value; saveS(); applyTheme(); return; }
-  if(e.target.id==='aiColorPick'){ S.aiColor=e.target.value; saveS(); applyTheme(); return; }
+  if(e.target.id==='userColorPick'){ S.userColor=e.target.value; saveS(); applyTheme(); renderSubTheme(); return; }
+  if(e.target.id==='aiColorPick'){ S.aiColor=e.target.value; saveS(); applyTheme(); renderSubTheme(); return; }
 });
 $('#subScroll').addEventListener('change',function(e){
   if(e.target.id==='userNameIn'){ S.userName=(e.target.value||'').trim()||'我'; saveS(); renderChat(); return; }
@@ -6985,19 +6951,6 @@ setTimeout(function(){ try{ warnStorageIfTight(); }catch(e){} }, 1600);
 /* 太久没备份也提醒一次 */
 setTimeout(function(){ try{ remindBackupIfStale(); }catch(e){} }, 2400);
 
-
-/* 开屏声明：只弹一次；若正在显示更新日志，等它关闭后再弹，避免两个窗叠加 */
-(function(){
-  function tryShow(){
-    var up = document.getElementById('updMask');
-    if(up && up.classList.contains('on')){
-      setTimeout(tryShow, 800);   // 更新窗还开着，等一会儿再看
-      return;
-    }
-    try{ showNote(); }catch(e){}
-  }
-  setTimeout(tryShow, 700);
-})();
 
 /* 隐藏启动动画：等首屏渲染完成再淡出 */
 (function hideBoot(){
