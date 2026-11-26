@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-26 13:15';
+var APP_VERSION='2026-11-26 14:25';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1703,7 +1703,8 @@ function isPeakTime(){
 
 function calcCost(u, model){
   if(!u) return 0;
-  var peak = isPeakTime();
+  // 优先用「这条消息生成时」记录的时段，保证翻旧消息时价格不变
+  var peak = (u._peak != null) ? !!u._peak : isPeakTime();
   var isPro = /pro/i.test(String(model||''));
   // 每百万 token 单价
   var p = isPro
@@ -4666,8 +4667,12 @@ async function send(text, retryIndex, skipPush){
         if(jj.usage){
           var _ch = jj.choices && jj.choices[0];
           var _isFinal = !_ch || _ch.finish_reason || (jj.choices && jj.choices.length === 0);
-          if(_isFinal) ai.usage = jj.usage;
-          else if(!ai.usage) ai.usage = jj.usage;   // 兜底：只有一次机会时也存下
+          if(_isFinal || !ai.usage){
+            ai.usage = jj.usage;
+            // 记下这一刻是不是高峰时段，以后翻旧消息时按当时的价算，不再随时间变
+            ai.usage._peak = isPeakTime();
+            ai.usage._at = Date.now();
+          }
         }
         var dl=(jj.choices&&jj.choices[0]&&jj.choices[0].delta)||{};
         if(dl.reasoning_content){ ai.reasoning+=dl.reasoning_content; paint(); }
