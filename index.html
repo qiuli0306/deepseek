@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-26 14:25';
+var APP_VERSION='2026-11-26 19:50';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1745,8 +1745,9 @@ function usageLine(u, model){
   // 有未命中时把数字也写出来，方便和官方后台核对
   var missTxt = (miss > 0) ? '，未命中 ' + fmtNum(miss) : '';
   var anchorTxt = '';
-  if(window.__ctxTrimmed > 0){
-    anchorTxt = '（从第 ' + (window.__ctxTrimmed + 1) + ' 条起）';
+  // 只看这条消息自己记录的位置，不用全局变量（否则换对话后会串）
+  if(u && u._trim > 0){
+    anchorTxt = '（从第 ' + (u._trim + 1) + ' 条起）';
   }
   return '输入 ' + fmtNum(pin) + cacheTxt + missTxt + ' · 输出 ' + fmtNum(out) + ' · 约 ' + money + anchorTxt;
 }
@@ -4256,6 +4257,13 @@ function looksLikeRoleplay(c){
 
 function buildMessagesCore(c, startAt){
   var arr=[];
+  // 若已做过自动压缩，且请求起点在压缩点之前，用摘要顶替那一段
+  var _cc = c._compact;
+  if(_cc && _cc.summary && startAt < (_cc.from || 0)){
+    arr.push({role:'user', content:'【前情提要】以下是这次对话之前的经过，请把它当作已经发生的事：\n\n' + _cc.summary});
+    arr.push({role:'assistant', content:'（已了解前情，继续。）'});
+    startAt = _cc.from || 0;
+  }
   // 系统提示词：用户自定义优先，否则默认带「沉浸叙事」预设（可关）
   var _sys = '';
   if(S.sysPrompt && String(S.sysPrompt).trim()){
@@ -4357,11 +4365,99 @@ function buildMessagesCore(c, startAt){
   return arr;
 }
 
+// ===== 自动上下文压缩 =====
+// 目的：对话太长时，把最早一段压成摘要，既省 token 又不会让 AI 忘事
+// 关键：消息不删，只是不再发送；用户翻历史一条不少
+var COMPACT_AT   = 350000;   // 超过这个 token 就压缩
+var COMPACT_KEEP = 0.50;     // 保留后面 50% 的消息
+var COMPACT_MIN  = 24;       // 至少留这么多条不动
+var COMPACT_MAXLEN = 2200;   // 摘要最多这么多字
+
+// 判断是否该压（纯计算，不发请求）
+function needCompact(c){
+  if(!c || !c.msgs || c.msgs.length < COMPACT_MIN * 2) return false;
+  if(c._compacting) return false;
+  var cc = c._compact;
+  var from = (cc && typeof cc.from === 'number') ? cc.from : 0;
+  // 用「已经要发的部分」估 token，避免一直压
+  var est = estArrTokens(buildMessagesCore(c, from));
+  return est > COMPACT_AT;
+}
+
+// 真正执行压缩：顺着当前对话追加一条指令，命中缓存，成本极低
+async function runCompact(c){
+  if(!c || c._compacting) return false;
+  if(!S.apiKey) return false;
+  var total = (c.msgs || []).length;
+  if(total < COMPACT_MIN * 2) return false;
+
+  var cc = c._compact;
+  var curFrom = (cc && typeof cc.from === 'number') ? cc.from : 0;
+  var cut = curFrom + Math.floor((total - curFrom) * COMPACT_KEEP);
+  if(cut > total - COMPACT_MIN) cut = total - COMPACT_MIN;
+  if(cut <= curFrom) return false;
+
+  c._compacting = true;
+  try{
+    // 用完整上下文发（和正常请求一致，缓存命中率最高）
+    var msgs = buildMessagesCore(c, 0);
+    msgs.push({role:'user', content:
+      '（先别继续剧情。请把以上全部内容整理成一份前情提要，' + COMPACT_MAXLEN + '字以内，' +
+      '保留：人物与关系、重要设定、已经发生的关键事件、当前处境、还没解决的线索。' +
+      '用平实的叙述，不要评论、不要分析、不要分点，只输出提要正文。）'});
+
+    var body = {
+      model: S.model || 'deepseek-flash',
+      messages: msgs,
+      temperature: 0.3,
+      max_tokens: 3000,
+      stream: false
+    };
+    var res = await apiFetch(S.baseUrl.replace(/\/+$/,'') + '/chat/completions', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.apiKey},
+      body: JSON.stringify(body)
+    });
+    if(!res.ok) return false;
+    var j = await res.json();
+    var txt = (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
+    txt = String(txt).trim();
+    if(txt.length < 50) return false;            // 太短当失败
+    if(txt.length > COMPACT_MAXLEN * 2) txt = txt.slice(0, COMPACT_MAXLEN * 2);
+
+    // 合并旧摘要（如果之前压过）
+    var merged = txt;
+    if(cc && cc.summary){
+      merged = txt;   // 新摘要已包含旧内容（因为发的是完整上下文）
+    }
+
+    c._compact = {
+      summary: merged,
+      from: cut,
+      at: Date.now(),
+      savedChars: 0
+    };
+    // 压完之后锚点归零（由摘要接管）
+    c._trimDropped = 0;
+    saveC(c);
+    return true;
+  }catch(e){
+    return false;
+  }finally{
+    c._compacting = false;
+  }
+}
+
 function buildMessages(c){
   // 稳定锚点：沿用上次的起始位置，避免每轮滑动导致缓存全失效
   var startAt = 0;
-  if(typeof c._trimDropped === 'number' && c._trimDropped > 0 && c._trimDropped < c.msgs.length){
-    startAt = c._trimDropped;
+  if(typeof c._trimDropped === 'number' && c._trimDropped > 0){
+    if(c._trimDropped < c.msgs.length){
+      startAt = c._trimDropped;
+    } else {
+      // 锚点比当前消息数还大（删过消息或重新生成过），清掉避免永久失效
+      c._trimDropped = 0;
+    }
   }
 
   var arr = buildMessagesCore(c, startAt);
@@ -4387,6 +4483,17 @@ function buildMessages(c){
   }
   window.__ctxTrimmed = startAt;
   window.__ctxUsed = estArrTokens(arr);
+
+  // 上下文过大时，在后台悄悄压缩（不阻塞本次请求，也不提示用户）
+  try{
+    if(needCompact(c) && !c._compactTimer){
+      c._compactTimer = setTimeout(function(){
+        c._compactTimer = null;
+        runCompact(c).catch(function(){});
+      }, 1500);
+    }
+  }catch(e){}
+
   return arr;
 }
 
@@ -4672,6 +4779,7 @@ async function send(text, retryIndex, skipPush){
             // 记下这一刻是不是高峰时段，以后翻旧消息时按当时的价算，不再随时间变
             ai.usage._peak = isPeakTime();
             ai.usage._at = Date.now();
+            ai.usage._trim = (typeof window.__ctxTrimmed === 'number') ? window.__ctxTrimmed : 0;
           }
         }
         var dl=(jj.choices&&jj.choices[0]&&jj.choices[0].delta)||{};
@@ -5208,6 +5316,35 @@ function openDrawer(){
 function closeDrawer(){ $('#drawer').classList.remove('on'); $('#mask').classList.remove('on'); }
 $('#btnMenu').addEventListener('click',openDrawer);
 $('#mask').addEventListener('click',closeDrawer);
+// 诊断：显示当前对话的真实消息条数和上下文情况
+function showConvInfo(){
+  var c = cur();
+  if(!c){ toast('当前是空对话'); return; }
+  var n = (c.msgs || []).length;
+  var u = 0, a = 0;
+  (c.msgs || []).forEach(function(m){ if(m.role === 'user') u++; else a++; });
+  var est = estArrTokens(buildMessagesCore(c, 0));
+  var trim = c._trimDropped || 0;
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:20px';
+  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:20px;max-width:330px;width:100%;color:#222">'+
+    '<div style="font-size:16px;font-weight:700;margin-bottom:14px">当前对话信息</div>'+
+    '<div style="font-size:13.5px;line-height:2.1">'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">标题</span><span style="max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.title||'无标题')+'</span></div>'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">消息总数</span><span style="font-weight:700">'+n+' 条</span></div>'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">我的消息</span><span>'+u+' 条</span></div>'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">AI 回复</span><span>'+a+' 条</span></div>'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">已截断</span><span>'+(trim? trim+' 条':'无')+'</span></div>'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">完整上下文</span><span>约 '+fmtNum(est)+' token</span></div>'+
+      (c._compact ? '<div style="display:flex;justify-content:space-between"><span style="color:#888">已自动压缩</span><span style="color:#1e8e3e">是（保留后 '+c._compact.from+' 条起）</span></div>' : '')+
+    '</div>'+
+    '<div style="font-size:11.5px;color:#999;line-height:1.7;margin-top:12px">如果「消息总数」远超你实际聊的条数，可能是导入或复制时数据重复了。</div>'+
+    '<button id="ciOk" style="width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#4d6bfe;color:#fff;font-size:15px;font-weight:600">知道了</button>'+
+  '</div>';
+  document.body.appendChild(mask);
+  mask.querySelector('#ciOk').onclick = function(){ try{ document.body.removeChild(mask); }catch(e){} };
+}
+
 $('#btnNew').addEventListener('click',newChat);
 function newChat(){
   if(busy&&ac) ac.abort();
@@ -5919,6 +6056,9 @@ function subData(){
   '<button class="btn" id="mShrinkImgs">压缩历史图片（解决发送失败）</button>'+
   '<div class="hint" style="margin:6px 2px 0">把对话里过大的旧图片重新压缩。图片太多导致发不出去、或 token 消耗异常时可以点。</div>'+
   '<div style="height:8px"></div>'+
+  '<button class="btn" id="mConvInfo">查看当前对话消息数</button>'+
+  '<div class="hint" style="margin:6px 2px 0">如果你觉得对话不该那么长，点这里看实际条数。</div>'+
+  '<div style="height:8px"></div>'+
   '<button class="btn" id="mDiag">存储诊断（找回丢失的对话）</button>'+
   '<div class="hint" style="margin:6px 2px 0">对话莫名消失、或列表空了但记得存过，点这里扫描本地残留数据。</div>'+
   '<div style="height:8px"></div><button class="btn danger" id="mClear">'+t('dataClear')+'</button>'+
@@ -6061,6 +6201,7 @@ document.addEventListener('click',async function(e){
   }
   if(e.target.id==='goLogin'){ openSub('account'); return; }
   if(e.target.id==='sbSync'){ toast('同步中…'); if(await sbSync()) toast('同步完成'); return; }
+  if(e.target.id==='mConvInfo'){ closeDrawer(); showConvInfo(); return; }
   if(e.target.id==='bgPick'){ $('#bgImage').click(); }
   if(e.target.id==='bgReset'){ S.bgImage=''; S.chatBg=''; saveS(); applyTheme(); renderSubTheme(); }
   // 勾选/取消朗读时跳过的内容
