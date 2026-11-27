@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-27 20:39';
+var APP_VERSION='2026-11-27 22:32';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -3761,6 +3761,108 @@ function pickDeepSeekBackup(){
   inp.click();
 }
 
+// ===== 旧版 .doc（OLE 复合文档）文本提取 =====
+// 有些文件扩展名写成 .docx 但实际是 doc，按 zip 解析会失败
+function oleExtractText(arrbuf){
+  try{
+    var dv = new DataView(arrbuf);
+    if(dv.byteLength < 512) return '';
+    if(dv.getUint32(0, true) !== 0xE011CFD0) return '';   // 不是 OLE
+
+    var secSize  = 1 << dv.getUint16(30, true);
+    var dirStart = dv.getUint32(48, true);
+    if(!secSize || secSize > 65536) return '';
+
+    var fatSecs = [];
+    for(var i = 0; i < 109; i++){
+      var sIdx = dv.getUint32(76 + i * 4, true);
+      if(sIdx >= 0xFFFFFFFA) break;
+      fatSecs.push(sIdx);
+    }
+
+    var secOff = function(n){ return (n + 1) * secSize; };
+
+    var fat = [];
+    fatSecs.forEach(function(sn){
+      var base = secOff(sn);
+      if(base + secSize > dv.byteLength) return;
+      for(var j = 0; j < secSize / 4; j++) fat.push(dv.getUint32(base + j * 4, true));
+    });
+    if(!fat.length) return '';
+
+    function readChain(start){
+      var parts = [], cur = start, guard = 0;
+      while(cur < 0xFFFFFFFA && guard++ < 20000){
+        var off = secOff(cur);
+        if(off + secSize > dv.byteLength) break;
+        parts.push(new Uint8Array(arrbuf, off, secSize));
+        cur = fat[cur];
+      }
+      var total = 0;
+      parts.forEach(function(p2){ total += p2.length; });
+      var out = new Uint8Array(total), pos = 0;
+      parts.forEach(function(p2){ out.set(p2, pos); pos += p2.length; });
+      return out;
+    }
+
+    var dir = readChain(dirStart);
+    var target = null;
+    for(var e = 0; e * 128 + 128 <= dir.length; e++){
+      var b = e * 128;
+      var nameLen = dir[b + 64] | (dir[b + 65] << 8);
+      if(nameLen < 2 || nameLen > 64) continue;
+      if(dir[b + 66] !== 2) continue;
+      var nm = '';
+      for(var k = 0; k < nameLen - 2; k += 2){
+        nm += String.fromCharCode(dir[b + k] | (dir[b + k + 1] << 8));
+      }
+      if(nm === 'WordDocument'){
+        var st = dir[b + 116] | (dir[b + 117] << 8) | (dir[b + 118] << 16) | (dir[b + 119] << 24);
+        var sz = (dir[b + 120] | (dir[b + 121] << 8) | (dir[b + 122] << 16) | (dir[b + 123] << 24)) >>> 0;
+        target = { start: st, size: sz };
+        break;
+      }
+    }
+    if(!target) return '';
+
+    var stream = readChain(target.start);
+    if(target.size > 0 && target.size < stream.length) stream = stream.slice(0, target.size);
+
+    var text = '';
+    var chunk = [];
+    for(var i2 = 0; i2 + 1 < stream.length; i2 += 2){
+      chunk.push(stream[i2] | (stream[i2 + 1] << 8));
+      if(chunk.length >= 4096){
+        text += String.fromCharCode.apply(null, chunk);
+        chunk = [];
+      }
+    }
+    if(chunk.length) text += String.fromCharCode.apply(null, chunk);
+
+    return pickReadable(text);
+  }catch(e){
+    return '';
+  }
+}
+
+// 从 UTF-16 文本里挑出像人话的片段，滤掉二进制乱码
+function pickReadable(text){
+  var pat = /[\u4e00-\u9fff\u3000-\u303f\uff00-\uffefA-Za-z0-9，。！？、；：""''（）《》…—·\-\s]{8,}/g;
+  var segs = text.match(pat) || [];
+  var COMMON = '的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把性好应开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情者最立代想已通并提直题党程展五果料象员革位入常文总次品式活设及管特件长求老头基资边流路级少图山统接知较将组见计别她手角期根论运农指几九区强放决西被干做必战先回则任取据处队南给色光门即保治北造百规热领七海口东导器压志世金增争济阶油思术极交受联什认六共权收证改清己美再采转更单风切打白教速花带安场身车例真务具万每目至达走积示议声报斗完类八离华名确才科张信马节话米整空元况今集温传土许步群广石记需段研界拉林律叫且究观越织装影算低持音众书布复容儿须际商非验连断深难近矿千周委素技备半办青省列习响约支般史感劳便团往酸历市克何除消构府称太准精值号率族维划选标写存候毛亲快效斯院查江型眼王按格养易置派层片始却专状育厂京识适属圆包火住调满县局照参红细引听该铁价严';
+  var out = [];
+  segs.forEach(function(seg){
+    seg = seg.replace(/[\r\u0000]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    if(seg.length < 8) return;
+    var cjk = seg.match(/[\u4e00-\u9fff]/g) || [];
+    if(!cjk.length){ if(seg.length >= 20) out.push(seg); return; }
+    var hit = 0;
+    for(var i = 0; i < cjk.length; i++){ if(COMMON.indexOf(cjk[i]) >= 0) hit++; }
+    if(hit / cjk.length > 0.30) out.push(seg);
+  });
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 async function docxToText(buf){
   var xml = await unzipEntryText(buf, 'word/document.xml');
   // 按段落切分
@@ -3782,7 +3884,7 @@ async function docxToText(buf){
 function readDoc(file){
   return new Promise(function(resolve){
     var name = (file.name||'').toLowerCase();
-    var isDocx = /\.(docx|xlsx|pptx)$/.test(name);
+    var isDocx = /\.(docx|xlsx|pptx|doc)$/.test(name);
 
     if(isDocx){
       if(file.size > 20*1024*1024){ resolve({error:'文档超过 20MB'}); return; }
@@ -3791,6 +3893,18 @@ function readDoc(file){
         try{
           var buf = fr0.result;
           var text;
+          // 先看文件头：有些 .docx 其实是旧版 .doc（OLE 格式），按 zip 解析会失败
+          var _head = new DataView(buf);
+          var _isOle = (_head.byteLength >= 8 && _head.getUint32(0, true) === 0xE011CFD0);
+          if(_isOle){
+            text = oleExtractText(buf);
+            if(!text || text.length < 30){
+              resolve({error:'这个文件其实是旧版 .doc 格式（扩展名写成了 .docx），自动提取失败。请用 WPS 打开后「另存为」真正的 .docx 再发送'});
+              return;
+            }
+            resolve({text: text});
+            return;
+          }
           if(/\.docx$/.test(name)) text = await docxToText(buf);
           else if(/\.xlsx$/.test(name)){
             text = await unzipEntryText(buf, 'xl/sharedStrings.xml').catch(function(){ return ''; });
