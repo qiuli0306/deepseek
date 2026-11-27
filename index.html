@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-27 15:06';
+var APP_VERSION='2026-11-27 20:14';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1147,39 +1147,81 @@ function warnStorageIfTight(){
     if(info.free < 60 * 1048576){
       if(sessionStorage.getItem('dsclone_storage_warned')) return;
       try{ sessionStorage.setItem('dsclone_storage_warned', '1'); }catch(e){}
-      showStorageWarn(mb);
+      showStorageWarn({ kind: 'low', freeMB: mb });
     }
   }).catch(function(){});
 }
 
-function showStorageWarn(freeMB){
+function showStorageWarn(opt){
+  // opt 可以是旧的「剩余 MB 数字」，也可以是对象 {kind, quotaMB, usedMB, pct}
+  var o = (typeof opt === 'object' && opt) ? opt : { kind: 'low', freeMB: opt };
+  var title, bodyHtml;
+
+  if(o.kind === 'app'){
+    title = 'App 的存储额度满了';
+    bodyHtml =
+      '不是手机空间不够。<br><br>'+
+      '这个 App 能用的本地存储上限是 <b>'+o.quotaMB+' MB</b>，'+
+      '现在已用 <b>'+o.usedMB+' MB</b>（'+o.pct+'%）。<br><br>'+
+      '手机本身的存储是另一回事，清理相册、视频对这里没有帮助。<br><br>'+
+      '继续聊下去新消息<b>存不进去</b>，建议先导出备份，再删掉一些旧对话。';
+  } else if(o.kind === 'low'){
+    title = 'App 的存储额度快满了';
+    bodyHtml =
+      '这个 App 能用的本地存储只剩约 <b>'+o.freeMB+' MB</b>。<br><br>'+
+      '这跟手机剩多少空间没关系，是浏览器给单个站点分配的额度。<br><br>'+
+      '额度用完后新消息会存不进去，建议先导出一次备份。';
+  } else {
+    title = '本地数据存不进去了';
+    bodyHtml =
+      '刚才保存聊天记录失败。<br><br>'+
+      '原因通常是这个 App 分到的本地存储额度用完了，'+
+      '不是手机空间不足。<br><br>'+
+      '建议先导出备份，再清理一些不用的对话。';
+  }
+
   var mask = document.createElement('div');
   mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99998;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;padding:22px';
-  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:22px 20px;max-width:330px;width:100%;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35)">'+
-    '<div style="font-size:32px;margin-bottom:8px">⚠️</div>'+
-    '<div style="font-size:17px;font-weight:700;color:#d93025;margin-bottom:10px">手机存储空间不足</div>'+
-    '<div style="font-size:13.5px;line-height:1.75;color:#444;text-align:left">'+
-      '当前可用空间只剩约 <b style="color:#d93025">'+freeMB+' MB</b>。<br><br>'+
-      '空间太满时，系统可能清理应用数据，导致<b>聊天记录丢失</b>。<br><br>'+
-      '建议：<br>'+
-      '· 清理相册、视频等大文件<br>'+
-      '· 先导出一次对话备份'+
-    '</div>'+
-    '<button id="swOk" style="width:100%;padding:12px;border:0;border-radius:12px;background:#4d6bfe;color:#fff;font-size:15px;font-weight:600;margin-top:16px">我知道了</button>'+
+  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:22px 20px;max-width:334px;width:100%;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35)">'+
+    '<div style="font-size:32px;margin-bottom:8px">💾</div>'+
+    '<div style="font-size:17px;font-weight:700;color:#c26b00;margin-bottom:10px">'+title+'</div>'+
+    '<div style="font-size:13.5px;line-height:1.75;color:#444;text-align:left">'+bodyHtml+'</div>'+
+    '<button id="swExport" style="width:100%;padding:12px;border:0;border-radius:12px;background:#4d6bfe;color:#fff;font-size:15px;font-weight:600;margin-top:16px">先导出备份</button>'+
+    '<button id="swOk" style="width:100%;padding:11px;border:0;border-radius:12px;background:#f1f3f6;color:#666;font-size:14px;margin-top:8px">我知道了</button>'+
     '</div>';
   document.body.appendChild(mask);
   var b = document.getElementById('swOk');
   if(b) b.onclick = function(){ try{ document.body.removeChild(mask); }catch(e){} };
+  var ex = document.getElementById('swExport');
+  if(ex) ex.onclick = function(){
+    try{ document.body.removeChild(mask); }catch(e){}
+    try{ exportAll(); markBackupDone(); }catch(e){}
+  };
 }
 
 // 保存失败时明确警告（不只是闪一下 toast）
+// 只有真正的 QuotaExceededError 才算存不下，别把其它错误误报成"空间不足"
 function warnSaveFailed(err){
-  var msg = String(err && err.message || err || '');
-  var isQuota = /quota|exceed|storage|space/i.test(msg);
+  var name = String((err && err.name) || '');
+  var msg  = String((err && err.message) || err || '');
+  var isQuota = (name === 'QuotaExceededError') || /quota.*exceed|exceeded the quota/i.test(msg);
   if(isQuota){
-    showStorageWarn('0');
+    // 查出到底是哪个额度满了，写清楚，别让用户去清理相册
+    checkStorageSpace().then(function(info){
+      if(info && info.quota > 0){
+        showStorageWarn({
+          kind: 'app',
+          quotaMB: Math.round(info.quota / 1048576),
+          usedMB: Math.round(info.usage / 1048576),
+          pct: Math.round(info.ratio * 100)
+        });
+      } else {
+        showStorageWarn({ kind: 'unknown' });
+      }
+    }).catch(function(){ showStorageWarn({ kind: 'unknown' }); });
     return true;
   }
+  try{ console.warn('save failed:', name, msg); }catch(e){}
   return false;
 }
 // 只写当前对话（发消息、切对话走这条，绝不重写整表）
