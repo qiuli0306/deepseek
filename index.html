@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-27 20:14';
+var APP_VERSION='2026-11-27 20:39';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1083,6 +1083,20 @@ function idbHas(key){
 function saveS(){ localStorage.setItem(SK, JSON.stringify(S)); }
 
 // ===== 存储空间检测 =====
+// 申请持久化存储：能显著提高配额，并防止系统在空间紧张时清掉数据
+var _persistState = 'unknown';   // unknown / granted / denied / unsupported
+function requestPersistStorage(){
+  try{
+    if(!(navigator.storage && navigator.storage.persist)){ _persistState = 'unsupported'; return; }
+    navigator.storage.persisted().then(function(already){
+      if(already){ _persistState = 'granted'; return; }
+      return navigator.storage.persist().then(function(granted){
+        _persistState = granted ? 'granted' : 'denied';
+      });
+    }).catch(function(){ _persistState = 'denied'; });
+  }catch(e){ _persistState = 'unsupported'; }
+}
+
 function checkStorageSpace(){
   if(!(navigator.storage && navigator.storage.estimate)) return Promise.resolve(null);
   return navigator.storage.estimate().then(function(est){
@@ -5376,6 +5390,52 @@ function openDrawer(){
 function closeDrawer(){ $('#drawer').classList.remove('on'); $('#mask').classList.remove('on'); }
 $('#btnMenu').addEventListener('click',openDrawer);
 $('#mask').addEventListener('click',closeDrawer);
+// 存储使用情况：配额、已用、是否持久化
+async function showStorageInfo(){
+  var info = await checkStorageSpace().catch(function(){ return null; });
+  var persisted = 'unknown';
+  try{
+    if(navigator.storage && navigator.storage.persisted){
+      persisted = (await navigator.storage.persisted()) ? 'granted' : 'denied';
+    } else { persisted = 'unsupported'; }
+  }catch(e){}
+
+  var quotaMB = info ? Math.round(info.quota / 1048576) : 0;
+  var usedMB  = info ? Math.round(info.usage / 1048576) : 0;
+  var freeMB  = info ? Math.round(info.free / 1048576) : 0;
+  var pct     = info ? Math.round(info.ratio * 100) : 0;
+
+  var pTxt = persisted === 'granted' ? '<span style="color:#1e8e3e">已持久化</span>'
+           : persisted === 'denied'  ? '<span style="color:#c26b00">未持久化</span>'
+           : '不支持';
+
+  var barColor = pct > 90 ? '#d93025' : (pct > 70 ? '#c26b00' : '#4d6bfe');
+
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:20px';
+  mask.innerHTML = '<div style="background:#fff;border-radius:18px;padding:20px;max-width:334px;width:100%;color:#222">'+
+    '<div style="font-size:16px;font-weight:700;margin-bottom:14px">存储使用情况</div>'+
+    (info ? (
+      '<div style="font-size:13px;color:#666;margin-bottom:6px">已用 <b style="color:#222">'+usedMB+' MB</b> / 上限 <b style="color:#222">'+quotaMB+' MB</b></div>'+
+      '<div style="height:8px;background:#eef0f4;border-radius:4px;overflow:hidden;margin-bottom:6px">'+
+        '<div style="height:100%;width:'+Math.min(100,pct)+'%;background:'+barColor+'"></div>'+
+      '</div>'+
+      '<div style="font-size:12px;color:#888;margin-bottom:14px">占用 '+pct+'%，还能存约 '+freeMB+' MB</div>'
+    ) : '<div style="font-size:13px;color:#888;margin-bottom:14px">这台设备拿不到配额信息</div>')+
+    '<div style="font-size:13.5px;line-height:2">'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">持久化</span><span>'+pTxt+'</span></div>'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:#888">对话数量</span><span>'+convs.length+' 个</span></div>'+
+    '</div>'+
+    '<div style="font-size:11.5px;color:#999;line-height:1.7;margin-top:12px">'+
+      '这里显示的额度是浏览器给这个 App 的，和手机剩余空间不是一回事。'+
+      (persisted === 'denied' ? '<br><br>没拿到持久化权限，系统可能在空间紧张时清掉数据。把本页加到桌面再打开，重新申请通常能通过。' : '')+
+    '</div>'+
+    '<button id="siOk" style="width:100%;margin-top:14px;padding:12px;border:0;border-radius:12px;background:#4d6bfe;color:#fff;font-size:15px;font-weight:600">知道了</button>'+
+  '</div>';
+  document.body.appendChild(mask);
+  mask.querySelector('#siOk').onclick = function(){ try{ document.body.removeChild(mask); }catch(e){} };
+}
+
 // 诊断：显示当前对话的真实消息条数和上下文情况
 function showConvInfo(){
   var c = cur();
@@ -6116,6 +6176,9 @@ function subData(){
   '<button class="btn" id="mShrinkImgs">压缩历史图片（解决发送失败）</button>'+
   '<div class="hint" style="margin:6px 2px 0">把对话里过大的旧图片重新压缩。图片太多导致发不出去、或 token 消耗异常时可以点。</div>'+
   '<div style="height:8px"></div>'+
+  '<button class="btn" id="mStorageInfo">存储使用情况</button>'+
+  '<div class="hint" style="margin:6px 2px 0">看看 App 分到多少空间、用掉多少、还能不能用。</div>'+
+  '<div style="height:8px"></div>'+
   '<button class="btn" id="mConvInfo">查看当前对话消息数</button>'+
   '<div class="hint" style="margin:6px 2px 0">如果你觉得对话不该那么长，点这里看实际条数。</div>'+
   '<div style="height:8px"></div>'+
@@ -6261,6 +6324,7 @@ document.addEventListener('click',async function(e){
   }
   if(e.target.id==='goLogin'){ openSub('account'); return; }
   if(e.target.id==='sbSync'){ toast('同步中…'); if(await sbSync()) toast('同步完成'); return; }
+  if(e.target.id==='mStorageInfo'){ closeDrawer(); showStorageInfo(); return; }
   if(e.target.id==='mConvInfo'){ closeDrawer(); showConvInfo(); return; }
   if(e.target.id==='bgPick'){ $('#bgImage').click(); }
   if(e.target.id==='bgReset'){ S.bgImage=''; S.chatBg=''; saveS(); applyTheme(); renderSubTheme(); }
@@ -7199,6 +7263,8 @@ applyTheme();
 applyLang();
 // ==== 迁移 / 载入 IDB 数据 ====
 (function bootStorage(){
+  // 先申请持久化存储：配额更大，且不会被系统当作临时缓存清掉
+  try{ requestPersistStorage(); }catch(e){}
   (async function(){
     try{
       // 全量扫描恢复：把库里所有可能的对话都捞出来
