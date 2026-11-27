@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-26 23:08';
+var APP_VERSION='2026-11-27 15:06';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -1183,9 +1183,10 @@ function warnSaveFailed(err){
   return false;
 }
 // 只写当前对话（发消息、切对话走这条，绝不重写整表）
-function saveC(){
+function saveC(conv){
   try{
-    var c=cur();
+    // 传了对象就存那个（用于抽屉里操作非当前对话），没传还是存当前对话
+    var c = conv || cur();
     if(c) idbSet('conv_'+(c.id||'cur'), c).catch(function(err){
       if(!window.__quotaWarned && warnSaveFailed(err)){ window.__quotaWarned = true; }
     });
@@ -1213,7 +1214,7 @@ function saveListNow(){
 }
 // 列表只保留元数据，消息体单独存在 conv_<id>
 function listMeta(c){
-  return { id:c.id, title:c.title, ts:c.ts, pinned:c.pinned, titleGen:c.titleGen };
+  return { id:c.id, title:c.title, ts:c.ts, pinned:c.pinned, titleGen:c.titleGen, titleManual:c.titleManual };
 }
 
 function saveCurOnly(){
@@ -4586,7 +4587,7 @@ async function autoTitle(c){
     });
     if(!res.ok){
       var t=''; try{ t=await res.text(); }catch(e){}
-      c.titleGen=-1; saveC();
+      c.titleGen=-1; saveC(c);
       return;
     }
     var reader=res.body.getReader(), dec=new TextDecoder('utf-8'), buf='', out='';
@@ -4608,9 +4609,9 @@ async function autoTitle(c){
       }
     }
     var ti=out.trim().replace(/^["'「『《]+|["'」』》]+$/g,'').replace(/[。，、！？:：\n]/g,'').slice(0,18);
-    if(ti){ c.title=ti; c.titleGen=2; saveC(); renderConvs(); updateHeadTitle(); }
-    else { c.titleGen=-1; saveC(); }
-  }catch(e){ c.titleGen=-1; saveC(); }
+    if(ti){ c.title=ti; c.titleGen=2; saveC(c); renderConvs(); updateHeadTitle(); }
+    else { c.titleGen=-1; saveC(c); }
+  }catch(e){ c.titleGen=-1; saveC(c); }
 }
 async function send(text, retryIndex, skipPush){
   text=(text||'').trim();
@@ -5464,7 +5465,7 @@ function cleanRefusals(c){
     // 从后往前删，避免索引错位
     picked.sort(function(a,b){ return b-a; }).forEach(function(i){ c.msgs.splice(i, 1); });
     c._trimDropped = 0;   // 重置截断锚点
-    saveC(); saveListNow(); renderChat();
+    saveC(c); saveListNow(); renderChat();
     try{ document.body.removeChild(mask); }catch(e){}
     toast('已删除 ' + picked.length + ' 条');
   };
@@ -5541,10 +5542,10 @@ $('#convMenu').addEventListener('click',function(e){
   if(act==='rename'){
     inputDialog('重命名', c.title, function(v){
       v=(v||'').trim();
-      if(v){ c.title=v.slice(0,40); c.titleGen=2; c.titleManual=true; saveC(); renderConvs(); updateHeadTitle(); }
+      if(v){ c.title=v.slice(0,40); c.titleGen=2; c.titleManual=true; saveC(c); saveListNow(); renderConvs(); updateHeadTitle(); }
     });
   }
-  if(act==='pin'){ c.pinned=!c.pinned; saveC(); saveListNow(); renderConvs(); updateHeadTitle(); }
+  if(act==='pin'){ c.pinned=!c.pinned; saveC(c); saveListNow(); renderConvs(); updateHeadTitle(); }
   if(act==='multi'){ multiMode=true; multiSel=new Set([id]); renderConvs(); }
   if(act==='cleanrefuse'){ cleanRefusals(c); return; }
   if(act==='del'){
