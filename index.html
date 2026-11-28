@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-28 13:01';
+var APP_VERSION='2026-11-28 13:15';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -4921,7 +4921,6 @@ async function send(text, retryIndex, skipPush){
       if(_explicit){
         _q = extractSearchQuery(_srcText).slice(0, 120);
       } else {
-        toast('正在判断是否需要联网…');
         var _dec = await decideSearchQuery(_srcText);
         if(_dec === null){
           // 判断失败：退回正则，只在明显需要时搜
@@ -4934,7 +4933,6 @@ async function send(text, retryIndex, skipPush){
       }
 
       if(_q){
-        toast('正在联网搜索…');
         _searchCtx = await webSearch(_q);
         if(_searchCtx){
           // 只在这一轮给约束，不改 system，缓存不受影响
@@ -4945,14 +4943,10 @@ async function send(text, retryIndex, skipPush){
         }
       }
     }catch(e){
-      var emsg = (e && e.message) || '';
-      if(/128|query|长度|字符/i.test(emsg)){
-        toast('搜索词太长，已跳过联网');
-      } else {
-        toast('搜索失败：' + emsg);
-      }
+      // 不弹提示，交给下面的「搜索失败」系统提示让 AI 自己说明
       _searchCtx = '';
       window.__searchFailed = true;
+      try{ console.warn('search failed:', (e && e.message) || e); }catch(e2){}
     }
   }
   var _msgs=buildMessages(c);
