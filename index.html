@@ -944,7 +944,7 @@ var LANG_MAP={};
 LANGS.forEach(function(x){ LANG_MAP[x[0]]={native:x[1],en:x[2]}; });
 
 /* ================= 配置 ================= */
-var APP_VERSION='2026-11-28 13:15';
+var APP_VERSION='2026-11-28 14:25';
 var SK='dsclone_settings_v4', CK='dsclone_convs_v4';
 var DEF={
   apiKey:'', baseUrl:'https://api.deepseek.com',
@@ -4153,11 +4153,32 @@ function extractSearchQuery(raw){
 
 // 让模型判断「要不要搜、搜什么」，比正则抠原文准得多
 // 返回 {need:true, query:'...'} / {need:false} / null（判断失败，由调用方兜底）
-async function decideSearchQuery(text){
+async function decideSearchQuery(text, c){
   var base = cleanAscii(S.baseUrl||'').replace(/\/+$/,'') || 'https://api.deepseek.com';
   var url = /\/v1$/.test(base) ? base + '/chat/completions' : base + '/v1/chat/completions';
   var src = String(text || '').slice(0, 800);
   if(!src.trim()) return { need: false };
+
+  // 带上最近的几条对话，这样用户说"搜一下设定"时能知道在聊什么
+  var ctx = '';
+  try{
+    if(c && Array.isArray(c.msgs) && c.msgs.length > 1){
+      var recent = c.msgs.slice(-7, -1);   // 不含当前这条
+      var lines = [];
+      recent.forEach(function(m){
+        var who = (m.role === 'user') ? '用户' : '助手';
+        var txt = String(m.content || '').replace(/\s+/g, ' ').trim();
+        if(!txt) return;
+        lines.push(who + '：' + txt.slice(0, 160));
+      });
+      ctx = lines.join('\n').slice(0, 900);
+    }
+  }catch(e){}
+
+  var userMsg = ctx
+    ? ('【最近的对话】\n' + ctx + '\n\n【用户刚说的这句】\n' + src)
+    : src;
+
   try{
     var res = await apiFetch(url, {
       method:'POST',
@@ -4171,10 +4192,12 @@ async function decideSearchQuery(text){
             '不需要联网的情况：写小说、角色扮演、续写剧情、闲聊、抒发情绪、让 AI 自己编设定、讨论创作技巧、问常识。\n\n' +
             '如果要联网：只输出搜索关键词，不超过 15 个字，不要标点、不要解释、不要引号。\n' +
             '如果不需要：只输出 NONE。\n\n' +
+            '重要：如果用户这句本身说得笼统（比如只说「搜一下设定」），' +
+            '要结合上面最近的对话判断他现在在聊什么作品、哪个角色，把作品名和角色名一起放进关键词。\n\n' +
             '补充：如果用户提到的内容偏向某个平台（知乎、B站、微博、小红书、豆瓣、贴吧、GitHub），' +
             '在关键词后面加上对应的站内限定，格式例如「五条悟 site:zhihu.com」。' +
             '只有一个平台时用 site:xxx.com；不确定或没提平台就不要加。' },
-          { role:'user', content: src }
+          { role:'user', content: userMsg }
         ],
         temperature: 0,
         max_tokens: 24,
@@ -4921,7 +4944,7 @@ async function send(text, retryIndex, skipPush){
       if(_explicit){
         _q = extractSearchQuery(_srcText).slice(0, 120);
       } else {
-        var _dec = await decideSearchQuery(_srcText);
+        var _dec = await decideSearchQuery(_srcText, c);
         if(_dec === null){
           // 判断失败：退回正则，只在明显需要时搜
           _q = extractSearchQuery(_srcText).slice(0, 120);
@@ -4936,7 +4959,14 @@ async function send(text, retryIndex, skipPush){
         _searchCtx = await webSearch(_q);
         if(_searchCtx){
           // 只在这一轮给约束，不改 system，缓存不受影响
-          _searchCtx += '\n\n【以上是联网结果。回答时用自己的话讲清楚就好，不要主动贴链接或列出来源，用户明确要看链接再给。】';
+          // 角色扮演场景：查到的资料只当背景，不要停下来讲解
+          if(looksLikeRoleplay(c)){
+            _searchCtx += '\n\n【以上是查到的原作资料。你现在在接续剧情，' +
+              '不要停下来讲解这些资料，也不要说「根据资料显示」之类的话，' +
+              '只要让描写和对话自然符合原作事实就行。用不到的部分忽略即可。】';
+          } else {
+            _searchCtx += '\n\n【以上是联网结果。回答时用自己的话讲清楚就好，不要主动贴链接或列出来源，用户明确要看链接再给。】';
+          }
         }
         if(!_searchCtx){
           window.__searchFailed = true;
